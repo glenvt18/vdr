@@ -144,7 +144,8 @@ void cEITScanner::Process(void)
            bool AnyDeviceSwitched = false;
            for (int i = 0; i < cDevice::NumDevices(); i++) {
                cDevice *Device = cDevice::GetDevice(i);
-               if (Device && Device->ProvidesEIT()) {
+               if (Device && Device->ProvidesEIT()
+                     && (!Device->PoweredDown() || lastActivity == 0)) { // powered up or forced scan
                   for (cScanData *ScanData = scanList->First(); ScanData; ScanData = scanList->Next(ScanData)) {
                       const cChannel *Channel = ScanData->GetChannel();
                       if (Channel) {
@@ -165,6 +166,10 @@ void cEITScanner::Process(void)
                                            }
                                         }
                                      //dsyslog("EIT scan: device %d  source  %-8s tp %5d", Device->DeviceNumber() + 1, *cSource::ToString(Channel->Source()), Channel->Transponder());
+                                     if (lastActivity == 0)
+                                        // forced scan - set idle timer for each channel switch;
+                                        // this prevents powering down while scanning a transponder
+                                        Device->SetIdleTimer(true, ScanTimeout + 5);
                                      Device->SwitchChannel(Channel, false);
                                      scanList->Del(ScanData);
                                      AnyDeviceSwitched = true;

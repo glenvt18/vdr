@@ -352,6 +352,8 @@ public:
   bool GetSignalStats(int &Valid, double *Strength = NULL, double *Cnr = NULL, double *BerPre = NULL, double *BerPost = NULL, double *Per = NULL, int *Status = NULL) const;
   int GetSignalStrength(void) const;
   int GetSignalQuality(void) const;
+  bool IsPoweredDown(void) {return fd_frontend < 0;}
+  void PowerDownMode(bool On);
   };
 
 cMutex cDvbTuner::bondMutex;
@@ -551,6 +553,8 @@ void cDvbTuner::ClearEventQueue(void) const
 
 bool cDvbTuner::GetFrontendStatus(fe_status_t &Status) const
 {
+  if (fd_frontend < 0)
+     return false;
   ClearEventQueue();
   while (1) {
         if (ioctl(fd_frontend, FE_READ_STATUS, &Status) != -1)
@@ -926,6 +930,8 @@ int SignalToSQI(const cChannel *Channel, int Signal, int Ber, int FeModulation, 
 
 int cDvbTuner::GetSignalStrength(void) const
 {
+  if (fd_frontend < 0)
+     return -1;
   ClearEventQueue();
   // Try DVB API 5:
   for (int i = 0; i < 1; i++) { // just a trick to break out with 'continue' ;-)
@@ -1472,6 +1478,26 @@ void cDvbTuner::Action(void)
           }
         newSet.TimedWait(mutex, WaitTime);
         }
+}
+
+void cDvbTuner::PowerDownMode(bool On)
+{
+  cMutexLock MutexLock(&mutex);
+  if (On && fd_frontend >= 0) {
+     isyslog("dvb tuner: power-down - closing frontend %d/%d", adapter, frontend);
+     tunerStatus = tsIdle;
+     close(fd_frontend);
+     fd_frontend = -1;
+     }
+  if (!On && fd_frontend < 0) {
+     cString Filename = cString::sprintf("%s/%s%d/%s%d",
+        DEV_DVB_BASE, DEV_DVB_ADAPTER, adapter, DEV_DVB_FRONTEND, frontend);
+     isyslog("dvb tuner: power-up - opening frontend %d/%d", adapter, frontend);
+     fd_frontend = open(Filename, O_RDWR | O_NONBLOCK);
+     if (fd_frontend < 0)
+        esyslog("ERROR: can't open DVB device frontend %d/%d", adapter, frontend);
+     tunerStatus = tsIdle;
+     }
 }
 
 // --- cDvbSourceParam -------------------------------------------------------
@@ -2201,6 +2227,19 @@ void cDvbDevice::DetachAllReceivers(void)
      d = d->bondedDevice;
      } while (d && d != this && needsDetachBondedReceivers);
   needsDetachBondedReceivers = false;
+}
+
+bool cDvbDevice::IsPoweredDown(void)
+{
+  if (dvbTuner)
+     return dvbTuner->IsPoweredDown();
+  return false;
+}
+
+void cDvbDevice::PowerDownMode(bool On)
+{
+  if (dvbTuner)
+     dvbTuner->PowerDownMode(On);
 }
 
 // --- cDvbDeviceProbe -------------------------------------------------------
