@@ -1545,6 +1545,12 @@ int main(int argc, char *argv[])
 
         ReportEpgBugFixStats();
 
+        for (int i = 0; i < cDevice::NumDevices(); i++) {
+           cDevice *d = cDevice::GetDevice(i);
+           if (d)
+              d->CheckIdle();
+           }
+
         // Main thread hooks of plugins:
         PluginManager.MainThreadHook();
         }
