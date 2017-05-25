@@ -580,6 +580,8 @@ bool cDvbTuner::GetFrontendStatus(fe_status_t &Status) const
 
 bool cDvbTuner::GetSignalStats(int &Valid, double *Strength, double *Cnr, double *BerPre, double *BerPost, double *Per, int *Status) const
 {
+  if (fd_frontend < 0)
+     return false;
   ClearEventQueue();
   fe_status_t FeStatus;
   dtv_property Props[MAXFRONTENDCMDS];
@@ -997,6 +999,8 @@ int cDvbTuner::GetSignalStrength(void) const
 
 int cDvbTuner::GetSignalQuality(void) const
 {
+  if (fd_frontend < 0)
+     return -1;
   // Try DVB API 5:
   for (int i = 0; i < 1; i++) { // just a trick to break out with 'continue' ;-)
       dtv_property Props[MAXFRONTENDCMDS];
