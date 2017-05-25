@@ -273,6 +273,9 @@ public:
   int PositionerSpeed;
   int PositionerSwing;
   int PositionerLastLon;
+  int PowerdownEnabled;
+  int PowerdownTimeoutM;
+  int PowerdownWakeupH;
   int SetSystemTime;
   int TimeSource;
   int TimeTransponder;

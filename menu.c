@@ -3839,6 +3839,12 @@ void cMenuSetupLNB::Setup(void)
      Add(new cMenuEditIntxItem(tr("Setup.LNB$Positioner speed (degrees/s)"), &data.PositionerSpeed, 1, 1800, 10));
      }
 
+  Add(new cMenuEditBoolItem(tr("Setup.LNB$Enable power saving"), &data.PowerdownEnabled));
+  if (data.PowerdownEnabled) {
+     Add(new cMenuEditIntItem(tr("Setup.LNB$Power down an idle device after (min)"), &data.PowerdownTimeoutM));
+     Add(new cMenuEditIntItem(tr("Setup.LNB$Wake up from power-down after (h)"), &data.PowerdownWakeupH));
+     }
+
   SetCurrent(Get(current));
   Display();
 }
@@ -3847,6 +3853,7 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys Key)
 {
   int oldDiSEqC = data.DiSEqC;
   int oldUsePositioner = data.UsePositioner;
+  int oldPowerdownEnabled = data.PowerdownEnabled;
   bool DeviceBondingsChanged = false;
   if (Key == kOk) {
      cString NewDeviceBondings = satCableNumbers.ToString();
@@ -3855,7 +3862,7 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys Key)
      }
   eOSState state = cMenuSetupBase::ProcessKey(Key);
 
-  if (Key != kNone && (data.DiSEqC != oldDiSEqC || data.UsePositioner != oldUsePositioner))
+  if (Key != kNone && (data.DiSEqC != oldDiSEqC || data.UsePositioner != oldUsePositioner || data.PowerdownEnabled != oldPowerdownEnabled))
      Setup();
   else if (DeviceBondingsChanged)
      cDvbDevice::BondDevices(data.DeviceBondings);
