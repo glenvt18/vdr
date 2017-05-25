@@ -939,12 +939,16 @@ int cDevice::Occupied(void) const
   return Seconds > 0 ? Seconds : 0;
 }
 
+// When the device is activated for a small interval, keep it powered up
+// this number of seconds after that interval. This helps to avoid
+// short power-down/power-up cycles during a series of activations.
+#define KEEP_POWERED_UP_AFTER 30
+
 void cDevice::SetOccupied(int Seconds)
 {
   if (Seconds >= 0) {
      occupiedTimeout = time(NULL) + min(Seconds, MAXOCCUPIEDTIMEOUT);
-     // avoid short power-down/power-up cycles
-     SetIdleTimer(true, Seconds + 30);
+     SetIdleTimer(true, Seconds + KEEP_POWERED_UP_AFTER);
      }
 }
 

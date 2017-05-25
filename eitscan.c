@@ -169,7 +169,7 @@ void cEITScanner::Process(void)
                                      if (lastActivity == 0)
                                         // forced scan - set idle timer for each channel switch;
                                         // this prevents powering down while scanning a transponder
-                                        Device->SetIdleTimer(true, ScanTimeout + 5);
+                                        Device->SetIdleTimer(true, ScanTimeout + ScanOverlap);
                                      Device->SwitchChannel(Channel, false);
                                      scanList->Del(ScanData);
                                      AnyDeviceSwitched = true;
