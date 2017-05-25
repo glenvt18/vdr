@@ -882,8 +882,8 @@ public:
        ///< won't be set, but the device will be kept powered up for at least
        ///< ExtraTimeoutS seconds.
 protected:
-       ///< NOTE: IsTunedToTransponder() should return false if the
-       ///< device is powered down.
+       ///< NOTE: If the device is powered down, IsTunedToTransponder() should
+       ///< return false and SignalXXXX() functions should return "not available".
   virtual bool IsPoweredDown(void) {return false;}
        ///< Returns true if the device is powered down "physically".
   virtual void PowerDownMode(bool On) {};
