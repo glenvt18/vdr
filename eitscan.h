@@ -21,7 +21,8 @@ class cTransponderList;
 class cEITScanner {
 private:
   enum { ActivityTimeout = 60,
-         ScanTimeout = 20
+         ScanTimeout = 20,
+         ScanOverlap = 5  // a small value enough for consecutive scans to overlap
        };
   time_t lastScan, lastActivity;
   int currentChannel;

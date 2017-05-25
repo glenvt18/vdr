@@ -395,6 +395,9 @@ cSetup::cSetup(void)
   PositionerSpeed = 15;
   PositionerSwing = 650;
   PositionerLastLon = 0;
+  PowerdownEnabled = 0;
+  PowerdownTimeoutM = 15;
+  PowerdownWakeupH = 4;
   SetSystemTime = 0;
   TimeSource = 0;
   TimeTransponder = 0;
@@ -623,6 +626,9 @@ bool cSetup::Parse(const char *Name, const char *Value)
   else if (!strcasecmp(Name, "PositionerSpeed"))     PositionerSpeed    = atoi(Value);
   else if (!strcasecmp(Name, "PositionerSwing"))     PositionerSwing    = atoi(Value);
   else if (!strcasecmp(Name, "PositionerLastLon"))   PositionerLastLon  = atoi(Value);
+  else if (!strcasecmp(Name, "PowerdownEnabled"))    PowerdownEnabled   = atoi(Value);
+  else if (!strcasecmp(Name, "PowerdownTimeoutM"))   PowerdownTimeoutM  = atoi(Value);
+  else if (!strcasecmp(Name, "PowerdownWakeupH"))    PowerdownWakeupH   = atoi(Value);
   else if (!strcasecmp(Name, "SetSystemTime"))       SetSystemTime      = atoi(Value);
   else if (!strcasecmp(Name, "TimeSource"))          TimeSource         = cSource::FromString(Value);
   else if (!strcasecmp(Name, "TimeTransponder"))     TimeTransponder    = atoi(Value);
@@ -755,6 +761,9 @@ bool cSetup::Save(void)
   Store("PositionerSpeed",    PositionerSpeed);
   Store("PositionerSwing",    PositionerSwing);
   Store("PositionerLastLon",  PositionerLastLon);
+  Store("PowerdownEnabled",   PowerdownEnabled);
+  Store("PowerdownTimeoutM",  PowerdownTimeoutM);
+  Store("PowerdownWakeupH",   PowerdownWakeupH);
   Store("SetSystemTime",      SetSystemTime);
   Store("TimeSource",         cSource::ToString(TimeSource));
   Store("TimeTransponder",    TimeTransponder);

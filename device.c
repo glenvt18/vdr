@@ -103,6 +103,9 @@ cDevice::cDevice(void)
   dvbSubtitleConverter = NULL;
   autoSelectPreferredSubtitleLanguage = true;
 
+  idleTimerExpires = time(NULL) + Setup.PowerdownTimeoutM * 60;
+  wakeupTimerExpires = 0;
+
   for (int i = 0; i < MAXRECEIVERS; i++)
       receiver[i] = NULL;
 
@@ -836,6 +839,11 @@ bool cDevice::SwitchChannel(int Direction)
   return result;
 }
 
+// While switching to a channel, the device will be kept powered up
+// for at least this number of seconds before a receiver is attached.
+// Must be less than cEITScanner::ScanTimeout.
+#define CHANNEL_SWITCH_POWERUP_TIMEOUT  10
+
 eSetChannelResult cDevice::SetChannel(const cChannel *Channel, bool LiveView)
 {
   cMutexLock MutexLock(&mutexChannel); // to avoid a race between SVDRP CHAN and HasProgramme()
@@ -870,6 +878,8 @@ eSetChannelResult cDevice::SetChannel(const cChannel *Channel, bool LiveView)
         Result = scrNotAvailable;
      }
   else {
+     // Power up the device
+     PowerUp(CHANNEL_SWITCH_POWERUP_TIMEOUT);
      // Stop section handling:
      if (sectionHandler) {
         sectionHandler->SetStatus(false);
@@ -933,10 +943,17 @@ int cDevice::Occupied(void) const
   return Seconds > 0 ? Seconds : 0;
 }
 
+// When the device is activated for a small interval, keep it powered up
+// this number of seconds after that interval. This helps to avoid
+// short power-down/power-up cycles during a series of activations.
+#define KEEP_POWERED_UP_AFTER 30
+
 void cDevice::SetOccupied(int Seconds)
 {
-  if (Seconds >= 0)
+  if (Seconds >= 0) {
      occupiedTimeout = time(NULL) + min(Seconds, MAXOCCUPIEDTIMEOUT);
+     SetIdleTimer(true, Seconds + KEEP_POWERED_UP_AFTER);
+     }
 }
 
 bool cDevice::SetChannelDevice(const cChannel *Channel, bool LiveView)
@@ -1792,6 +1809,7 @@ bool cDevice::AttachReceiver(cReceiver *Receiver)
                }
             }
          Start();
+         SetIdleTimer(false);
          return true;
          }
       }
@@ -1824,8 +1842,10 @@ void cDevice::Detach(cReceiver *Receiver)
            camSlot->Assign(NULL);
         }
      }
-  if (!receiversLeft)
+  if (!receiversLeft) {
      Cancel(-1);
+     SetIdleTimer(true);
+     }
 }
 
 void cDevice::DetachAll(int Pid)
@@ -1845,6 +1865,82 @@ void cDevice::DetachAllReceivers(void)
   cMutexLock MutexLock(&mutexReceiver);
   for (int i = 0; i < MAXRECEIVERS; i++)
       Detach(receiver[i]);
+}
+
+void cDevice::CheckIdle(void)
+{
+  if (!SupportsPowerDown() || !Setup.PowerdownEnabled)
+     return;
+  cMutexLock MutexLock(&mutexPowerSaving);
+  if (idleTimerExpires != 0 && time(NULL) > idleTimerExpires) {
+     // idle, powered up
+     dsyslog("power saving: device %d idle timer expired", CardIndex() + 1);
+     SetIdleTimer(false);
+     if (Setup.PowerdownWakeupH != 0)
+        wakeupTimerExpires = time(NULL) + Setup.PowerdownWakeupH * 3600;
+     else
+        dsyslog("power saving: waking up is disabled");
+     if (!IsPoweredDown()) {
+        dsyslog("power saving: powering device %d down", CardIndex() + 1);
+        if (sectionHandler) {
+           sectionHandler->SetStatus(false);
+           sectionHandler->SetChannel(NULL);
+           }
+        PowerDownMode(true);
+        }
+     }
+  if (wakeupTimerExpires != 0 && time(NULL) > wakeupTimerExpires) {
+     // idle, powered down
+     dsyslog("power saving: device %d wakeup timer expired", CardIndex() + 1);
+     SetIdleTimer(true);
+     if (IsPoweredDown()) {
+        dsyslog("power saving: waking up device %d", CardIndex() + 1);
+        PowerDownMode(false);
+        }
+     }
+}
+
+void cDevice::SetIdleTimer(bool On, int ExtraTimeoutS)
+{
+  if (!SupportsPowerDown())
+     return;
+  cMutexLock MutexLock(&mutexPowerSaving);
+  if (On) {
+     int Tout = Setup.PowerdownTimeoutM * 60;
+     time_t Now = time(NULL);
+     if (ExtraTimeoutS > 0) {
+        if (idleTimerExpires >= Now + ExtraTimeoutS)
+           return;
+        Tout = ExtraTimeoutS;
+        }
+     idleTimerExpires = Now + Tout;
+     if (Setup.PowerdownEnabled)
+        dsyslog("power saving: set device %d idle timer to %d sec", CardIndex() + 1, Tout);
+     }
+  else {
+     idleTimerExpires = 0;
+     if (Setup.PowerdownEnabled)
+        dsyslog("power saving: disable device %d idle timer", CardIndex() + 1);
+     }
+  wakeupTimerExpires = 0;
+}
+
+bool cDevice::PoweredDown(void)
+{
+  if (SupportsPowerDown() && Setup.PowerdownEnabled) {
+     cMutexLock MutexLock(&mutexPowerSaving);
+     return IsPoweredDown();
+     }
+  else
+     return false;
+}
+
+void cDevice::PowerUp(int ExtraTimeoutS)
+{
+  cMutexLock MutexLock(&mutexPowerSaving);
+  SetIdleTimer(true, ExtraTimeoutS);
+  if (SupportsPowerDown() && IsPoweredDown())
+     PowerDownMode(false);
 }
 
 // --- cTSBuffer -------------------------------------------------------------
