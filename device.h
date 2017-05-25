@@ -858,6 +858,37 @@ public:
        ///< Detaches all receivers from this device for this pid.
   virtual void DetachAllReceivers(void);
        ///< Detaches all receivers from this device.
+
+// Power saving facilities
+
+private:
+  cMutex mutexPowerSaving;
+  time_t idleTimerExpires, wakeupTimerExpires;
+  void PowerUp(int ExtraTimeoutS);
+       ///< If the device is powered down, powers it up and keeps it
+       ///< powered up for at least ExtraTimeoutS seconds (see
+       ///< cDevice::SetIdleTimer()).
+public:
+  void CheckIdle(void);
+       ///< Should be called periodically in the main loop.
+  bool PoweredDown(void);
+       ///< Returns true if the device is powered down "logically", that is,
+       ///< idle tasks like EPG scanning are disabled.
+  void SetIdleTimer(bool On, int ExtraTimeoutS = 0);
+       ///< Starts/disables the idle timer. This timer must be started when
+       ///< a device gets idle and must be disabled when it is receiving.
+       ///< If ExtraTimeoutS is greater than zero and On is true, a new timer
+       ///< won't be set, but the device will be kept powered up for at least
+       ///< ExtraTimeoutS seconds.
+protected:
+       ///< NOTE: If the device is powered down, IsTunedToTransponder() should
+       ///< return false and SignalXXXX() functions should return "not available".
+  virtual bool IsPoweredDown(void) {return false;}
+       ///< Returns true if the device is powered down "physically".
+  virtual void PowerDownMode(bool On) {};
+       ///< Actually powers the device down/up.
+  virtual bool SupportsPowerDown() {return false;}
+       ///< Returns true if a derived device supports power saving.
   };
 
 /// Derived cDevice classes that can receive channels will have to provide
