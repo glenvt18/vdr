@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <sys/unistd.h>
+#include <unistd.h>
 #include "device.h"
 #include "tools.h"
 

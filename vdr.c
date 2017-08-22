@@ -673,9 +673,12 @@ int main(int argc, char *argv[])
      }
   else if (Terminal) {
      // Claim new controlling terminal
-     stdin  = freopen(Terminal, "r", stdin);
-     stdout = freopen(Terminal, "w", stdout);
-     stderr = freopen(Terminal, "w", stderr);
+     if (!freopen(Terminal, "r", stdin)
+           || !freopen(Terminal, "w", stdout)
+           || !freopen(Terminal, "w", stderr)) {
+        fprintf(stderr, "vdr: can't open terminal %s\n", Terminal);
+        return 2;
+        }
      HasStdin = true;
      tcgetattr(STDIN_FILENO, &savedTm);
      }

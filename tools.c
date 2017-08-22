@@ -654,7 +654,7 @@ char *ReadLink(const char *FileName)
 {
   if (!FileName)
      return NULL;
-  char *TargetName = canonicalize_file_name(FileName);
+  char *TargetName = realpath(FileName, NULL);
   if (!TargetName) {
      if (errno == ENOENT) // file doesn't exist
         TargetName = strdup(FileName);
@@ -1540,10 +1540,14 @@ cReadDir::~cReadDir()
 struct dirent *cReadDir::Next(void)
 {
   if (directory) {
+#if defined(__GLIBC__) && defined(__GLIBC_PREREQ)
 #if !__GLIBC_PREREQ(2, 24) // readdir_r() is deprecated as of GLIBC 2.24
      while (readdir_r(directory, &u.d, &result) == 0 && result) {
 #else
      while ((result = readdir(directory)) != NULL) {
+#endif
+#else
+     while (readdir_r(directory, &u.d, &result) == 0 && result) {
 #endif
            if (strcmp(result->d_name, ".") && strcmp(result->d_name, ".."))
               return result;
