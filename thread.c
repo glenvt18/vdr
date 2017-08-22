@@ -160,7 +160,9 @@ cRwLock::cRwLock(bool PreferWriter)
   writeLockThreadId = 0;
   pthread_rwlockattr_t attr;
   pthread_rwlockattr_init(&attr);
+#ifdef __GLIBC__
   pthread_rwlockattr_setkind_np(&attr, PreferWriter ? PTHREAD_RWLOCK_PREFER_WRITER_NP : PTHREAD_RWLOCK_PREFER_READER_NP);
+#endif
   pthread_rwlock_init(&rwlock, &attr);
 }
 
@@ -210,7 +212,8 @@ cMutex::cMutex(void)
   locked = 0;
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
+  // use PTHREAD_MUTEX_ERRORCHECK for portability
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
   pthread_mutex_init(&mutex, &attr);
 }
 
