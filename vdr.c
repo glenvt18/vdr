@@ -671,9 +671,9 @@ int main(int argc, char *argv[])
      }
   else if (Terminal) {
      // Claim new controlling terminal
-     stdin  = freopen(Terminal, "r", stdin);
-     stdout = freopen(Terminal, "w", stdout);
-     stderr = freopen(Terminal, "w", stderr);
+     freopen(Terminal, "r", stdin);
+     freopen(Terminal, "w", stdout);
+     freopen(Terminal, "w", stderr);
      HasStdin = true;
      tcgetattr(STDIN_FILENO, &savedTm);
      }

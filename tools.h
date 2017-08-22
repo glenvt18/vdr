@@ -28,6 +28,16 @@
 #include <sys/types.h>
 #include "thread.h"
 
+#ifndef ACCESSPERMS
+# define ACCESSPERMS (S_IRWXU|S_IRWXG|S_IRWXO) /* 0777 */
+#endif
+#ifndef ALLPERMS
+# define ALLPERMS (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO)/* 07777 */
+#endif
+#ifndef DEFFILEMODE
+# define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)/* 0666*/
+#endif
+
 typedef unsigned char uchar;
 
 extern int SysLogLevel;
@@ -400,7 +410,14 @@ class cReadDir {
 private:
   DIR *directory;
   struct dirent *result;
+#if defined(__GLIBC__) && defined(__GLIBC_PREREQ)
 #if !__GLIBC_PREREQ(2, 24) // readdir_r() is deprecated as of GLIBC 2.24
+  union { // according to "The GNU C Library Reference Manual"
+    struct dirent d;
+    char b[offsetof(struct dirent, d_name) + NAME_MAX + 1];
+    } u;
+#endif
+#else
   union { // according to "The GNU C Library Reference Manual"
     struct dirent d;
     char b[offsetof(struct dirent, d_name) + NAME_MAX + 1];
@@ -760,7 +777,7 @@ public:
         data[i] = T(0);
     size = 0;
   }
-  void Sort(__compar_fn_t Compare)
+  void Sort(int (*Compare)(const void *, const void *))
   {
     qsort(data, size, sizeof(T), Compare);
   }
