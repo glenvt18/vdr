@@ -11,7 +11,11 @@
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <errno.h>
+
+#ifndef DEBUG_DISABLE_BACKTRACE
 #include <execinfo.h>
+#endif
+
 #include <linux/unistd.h>
 #include <malloc.h>
 #include <stdarg.h>
@@ -24,7 +28,11 @@
 #include <unistd.h>
 #include "tools.h"
 
+#ifdef DEBUG_DISABLE_BACKTRACE
+#define ABORT { dsyslog("ABORT!"); abort(); }
+#else
 #define ABORT { dsyslog("ABORT!"); cBackTrace::BackTrace(); abort(); }
+#endif
 
 //#define DEBUG_LOCKING  // uncomment this line to activate debug output for locking
 #define DEBUG_LOCKSEQ  // uncomment this line to activate debug output for invalid locking sequence
@@ -437,6 +445,7 @@ bool cThreadLock::Lock(cThread *Thread)
   return false;
 }
 
+#ifndef DEBUG_DISABLE_BACKTRACE
 // --- cBackTrace ------------------------------------------------------------
 
 #define BT_BUF_SIZE 100
@@ -555,6 +564,7 @@ cString cBackTrace::GetCaller(int Level, bool Mangled)
      }
   return Caller;
 }
+#endif
 
 // --- cStateLockLog ---------------------------------------------------------
 
@@ -622,7 +632,7 @@ void cStateLockLog::Dump(const char *Name, tThreadId ThreadId)
              q += sprintf(q, "  %c", c);
              }
          q += sprintf(q, "  %c", Lock ? 'L' : 'U');
-#ifdef DEBUG_LOCKCALL
+#if defined(DEBUG_LOCKCALL) && !defined(DEBUG_DISABLE_BACKTRACE)
          if (*logCaller[logIndex]) {
             *q++ = ' ';
             strn0cpy(q, *cBackTrace::Demangle(logCaller[logIndex]), sizeof(msg) - (q - msg));
@@ -634,8 +644,10 @@ void cStateLockLog::Dump(const char *Name, tThreadId ThreadId)
          logIndex = 0;
       }
   dsyslog("%5d invalid lock sequence: %s", ThreadId, Name);
+#ifndef DEBUG_DISABLE_BACKTRACE
   dsyslog("full backtrace:");
   cBackTrace::BackTrace(NULL, 2);
+#endif
   dsyslog("--- end invalid lock sequence report");
   dsyslog("--- THERE WILL BE NO FURTHER REPORTS UNTIL VDR IS RESTARTED!");
   fprintf(stderr, "invalid lock sequence at %s\n", *DayDateTime(time(NULL)));
@@ -691,7 +703,7 @@ void cStateLockLog::Check(const char *Name, bool Lock, bool Write)
         logFlags[logIndex] = flags[Index] | (Write ? SLL_WRITE_FLAG : 0) | (Lock ? SLL_LOCK_FLAG : 0);
         if (flags[Index] == 0)
            threadIds[Index] = 0;
-#ifdef DEBUG_LOCKCALL
+#if defined(DEBUG_LOCKCALL) && !defined(DEBUG_DISABLE_BACKTRACE)
         strn0cpy(logCaller[logIndex], cBackTrace::GetCaller(Lock ? 3 : 5, true), SLL_LENGTH);
 #endif
         if (++logIndex >= SLL_SIZE)
