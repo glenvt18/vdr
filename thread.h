@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <sys/types.h>
 
+// uncomment this if your libc doesn't provide backtrace capabilities
+//#define DEBUG_DISABLE_BACKTRACE
+
 typedef pid_t tThreadId;
 
 class cCondWait {
@@ -301,6 +304,7 @@ public:
   int Close(void);
   };
 
+#ifndef DEBUG_DISABLE_BACKTRACE
 // cBackTrace can be used for debugging.
 
 class cStringList;
@@ -336,6 +340,7 @@ public:
 // descriptors in the child process.
 // With Detached=true, calls command in background and in a separate session,
 // with stdin connected to /dev/null.
+#endif
 
 int SystemExec(const char *Command, bool Detached = false);
 
