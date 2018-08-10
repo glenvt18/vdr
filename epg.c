@@ -41,6 +41,11 @@ bool tComponent::FromString(const char *s)
   return n >= 3;
 }
 
+void tComponent::Dump(FILE *f, const char *Prefix) const
+{
+  fprintf(f, "%sX %X %02X %s %s\n", Prefix, stream, type, language, description ? description : "");
+}
+
 // --- cComponents -----------------------------------------------------------
 
 cComponents::cComponents(void)
@@ -448,42 +453,69 @@ cString cEvent::GetVpsString(void) const
   return buf;
 }
 
+static void ReplaceAndPrint(const char *s, char ch, char repl, FILE *f)
+{
+  while (*s) {
+     const char *p = strchr(s, ch);
+     if (p == NULL) {
+        fputs(s, f);
+        return;
+        }
+     fwrite(s, 1, p - s, f);
+     fputc(repl, f);
+     s = p + 1;
+     }
+}
+
 void cEvent::Dump(FILE *f, const char *Prefix, bool InfoOnly) const
 {
   if (InfoOnly || startTime + duration + Setup.EPGLinger * 60 >= time(NULL)) {
      fprintf(f, "%sE %u %ld %d %X %X\n", Prefix, eventID, startTime, duration, tableID, version);
-     if (!isempty(title))
-        fprintf(f, "%sT %s\n", Prefix, title);
-     if (!isempty(shortText))
-        fprintf(f, "%sS %s\n", Prefix, shortText);
+     if (!isempty(title)) {
+        fputs(Prefix, f);
+        fputs("T ", f);
+        fputs(title, f);
+        fputc('\n', f);
+        }
+     if (!isempty(shortText)) {
+        fputs(Prefix, f);
+        fputs("S ", f);
+        fputs(shortText, f);
+        fputc('\n', f);
+        }
      if (!isempty(description)) {
-        strreplace(description, '\n', '|');
-        fprintf(f, "%sD %s\n", Prefix, description);
-        strreplace(description, '|', '\n');
+        fputs(Prefix, f);
+        fputs("D ", f);
+        ReplaceAndPrint(description, '\n', '|', f);
+        fputc('\n', f);
         }
      if (contents[0]) {
-        fprintf(f, "%sG", Prefix);
+        fputs(Prefix, f);
+        fputc('G', f);
         for (int i = 0; Contents(i); i++)
             fprintf(f, " %02X", Contents(i));
-        fprintf(f, "\n");
+        fputc('\n', f);
         }
      if (parentalRating)
         fprintf(f, "%sR %d\n", Prefix, parentalRating);
      if (components) {
         for (int i = 0; i < components->NumComponents(); i++) {
             tComponent *p = components->Component(i);
-            fprintf(f, "%sX %s\n", Prefix, *p->ToString());
+            p->Dump(f, Prefix);
             }
         }
      if (vps)
         fprintf(f, "%sV %ld\n", Prefix, vps);
      if (!InfoOnly && !isempty(aux)) {
-        strreplace(aux, '\n', '|');
-        fprintf(f, "%s@ %s\n", Prefix, aux);
-        strreplace(aux, '|', '\n');
+        fputs(Prefix, f);
+        fputs("@ ", f);
+        ReplaceAndPrint(aux, '\n', '|', f);
+        fputc('\n', f);
         }
-     if (!InfoOnly)
-        fprintf(f, "%se\n", Prefix);
+     if (!InfoOnly) {
+        fputs(Prefix, f);
+        fputs("e\n", f);
+        }
      }
 }
 

@@ -46,6 +46,7 @@ struct tComponent {
   char *description;
   cString ToString(void);
   bool FromString(const char *s);
+  void Dump(FILE *f, const char *Prefix) const;
   };
 
 class cComponents {
