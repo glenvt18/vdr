@@ -141,6 +141,7 @@ public:
   void SetAux(const char *Aux);
   cString ToDescr(void) const;
   void Dump(FILE *f, const char *Prefix = "", bool InfoOnly = false) const;
+  void Dump_orig(FILE *f, const char *Prefix = "", bool InfoOnly = false) const;
   bool Parse(char *s);
   static bool Read(FILE *f, cSchedule *Schedule, int &Line);
   void FixEpgBugs(void);

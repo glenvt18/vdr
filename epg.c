@@ -1592,3 +1592,42 @@ void cEpgHandlers::EndSegmentTransfer(bool Modified)
          return;
       }
 }
+
+void cEvent::Dump_orig(FILE *f, const char *Prefix, bool InfoOnly) const
+{
+  if (InfoOnly || startTime + duration + Setup.EPGLinger * 60 >= time(NULL)) {
+     fprintf(f, "%sE %u %ld %d %X %X\n", Prefix, eventID, startTime, duration, tableID, version);
+     if (!isempty(title))
+        fprintf(f, "%sT %s\n", Prefix, title);
+     if (!isempty(shortText))
+        fprintf(f, "%sS %s\n", Prefix, shortText);
+     if (!isempty(description)) {
+        strreplace(description, '\n', '|');
+        fprintf(f, "%sD %s\n", Prefix, description);
+        strreplace(description, '|', '\n');
+        }
+     if (contents[0]) {
+        fprintf(f, "%sG", Prefix);
+        for (int i = 0; Contents(i); i++)
+            fprintf(f, " %02X", Contents(i));
+        fprintf(f, "\n");
+        }
+     if (parentalRating)
+        fprintf(f, "%sR %d\n", Prefix, parentalRating);
+     if (components) {
+        for (int i = 0; i < components->NumComponents(); i++) {
+            tComponent *p = components->Component(i);
+            fprintf(f, "%sX %s\n", Prefix, *p->ToString());
+            }
+        }
+     if (vps)
+        fprintf(f, "%sV %ld\n", Prefix, vps);
+     if (!InfoOnly && !isempty(aux)) {
+        strreplace(aux, '\n', '|');
+        fprintf(f, "%s@ %s\n", Prefix, aux);
+        strreplace(aux, '|', '\n');
+        }
+     if (!InfoOnly)
+        fprintf(f, "%se\n", Prefix);
+     }
+}
