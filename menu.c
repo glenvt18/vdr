@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: menu.c 4.69 2018/03/18 12:01:09 kls Exp $
+ * $Id: menu.c 4.74 2018/04/14 10:24:41 kls Exp $
  */
 
 #include "menu.h"
@@ -45,6 +45,7 @@
 #define MAXWAITFORCAMMENU  10 // seconds to wait for the CAM menu to open
 #define CAMMENURETRYTIMEOUT 3 // seconds after which opening the CAM menu is retried
 #define CAMRESPONSETIMEOUT  5 // seconds to wait for a response from a CAM
+#define PROGRESSTIMEOUT   100 // milliseconds to wait before updating the replay progress display
 #define MINFREEDISK       300 // minimum free disk space (in MB) required to start recording
 #define NODISKSPACEDELTA  300 // seconds between "Not enough disk space to start recording!" messages
 #define MAXCHNAMWIDTH      16 // maximum number of characters of channels' short names shown in schedules menus
@@ -1691,10 +1692,13 @@ eOSState cMenuWhatsOn::Record(void)
         Timers->SetSyncStateKey(StateKeySVDRPRemoteTimersPoll);
      if (HasSubMenu())
         CloseSubMenu();
-     if (Update())
-        Display();
-     SetHelpKeys(Channels);
      }
+  if (Update()) {
+     LOCK_SCHEDULES_READ;
+     Display();
+     }
+  LOCK_CHANNELS_READ;
+  SetHelpKeys(Channels);
   return osContinue;
 }
 
@@ -1999,10 +2003,12 @@ eOSState cMenuSchedule::Record(void)
         Timers->SetSyncStateKey(StateKeySVDRPRemoteTimersPoll);
      if (HasSubMenu())
         CloseSubMenu();
-     if (Update())
-        Display();
-     SetHelpKeys();
      }
+  if (Update()) {
+     LOCK_SCHEDULES_READ;
+     Display();
+     }
+  SetHelpKeys();
   return osContinue;
 }
 
@@ -3010,6 +3016,7 @@ void cMenuRecordings::Set(bool Refresh)
      Clear();
      GetRecordingsSortMode(DirectoryName());
      Recordings->Sort();
+     cMenuRecordingItem *CurrentItem = NULL;
      cMenuRecordingItem *LastItem = NULL;
      for (const cRecording *Recording = Recordings->First(); Recording; Recording = Recordings->Next(Recording)) {
          if ((!filter || filter->Filter(Recording)) && (!base || (strstr(Recording->Name(), base) == Recording->Name() && Recording->Name()[strlen(base)] == FOLDERDELIMCHAR))) {
@@ -3035,15 +3042,16 @@ void cMenuRecordings::Set(bool Refresh)
             if (LastItem || LastDir) {
                if (*path) {
                   if (strcmp(path, Recording->Folder()) == 0)
-                     SetCurrent(LastDir ? LastDir : LastItem);
+                     CurrentItem = LastDir ? LastDir : LastItem;
                   }
                else if (CurrentRecording && strcmp(CurrentRecording, Recording->FileName()) == 0)
-                  SetCurrent(LastDir ? LastDir : LastItem);
+                  CurrentItem = LastDir ? LastDir : LastItem;
                }
             if (LastDir)
                LastDir->IncrementCounter(Recording->IsNew());
             }
          }
+     SetCurrent(CurrentItem);
      if (Current() < 0)
         SetCurrent(Get(current)); // last resort, in case the recording was deleted
      SetMenuSortMode(RecordingsSortMode == rsmName ? msmName : msmTime);
@@ -4637,6 +4645,7 @@ cDisplayChannel::cDisplayChannel(eKeys FirstKey)
   number = 0;
   timeout = true;
   lastPresent = lastFollowing = NULL;
+  cOsdProvider::OsdSizeChanged(osdState); // just to get the current state
   lastTime.Set();
   withInfo = Setup.ShowInfoOnChSwitch;
   displayChannel = Skins.Current()->DisplayChannel(withInfo);
@@ -5562,7 +5571,6 @@ cReplayControl::cReplayControl(bool PauseLive)
   lastPlay = lastForward = false;
   lastSpeed = -2; // an invalid value
   timeoutShow = 0;
-  lastProgressUpdate = 0;
   timeSearchActive = false;
   cRecording Recording(fileName);
   cStatus::MsgReplaying(this, Recording.Name(), Recording.FileName(), true);
@@ -5726,43 +5734,39 @@ void cReplayControl::ShowMode(void)
 bool cReplayControl::ShowProgress(bool Initial)
 {
   int Current, Total;
-  if (Initial || lastSpeed != -1 || time(NULL) - lastProgressUpdate >= 1) {
-     if (GetFrameNumber(Current, Total) && Total > 0) {
-        if (!visible) {
-           displayReplay = Skins.Current()->DisplayReplay(modeOnly);
-           displayReplay->SetMarks(&marks);
-           SetNeedsFastResponse(true);
-           visible = true;
-           }
-        if (Initial) {
-           if (*fileName) {
-              LOCK_RECORDINGS_READ;
-              if (const cRecording *Recording = Recordings->GetByName(fileName))
-                 displayReplay->SetRecording(Recording);
-              }
-           lastCurrent = lastTotal = -1;
-           }
-        if (Current != lastCurrent || Total != lastTotal) {
-           time(&lastProgressUpdate);
-           if (Setup.ShowRemainingTime || Total != lastTotal) {
-              int Index = Total;
-              if (Setup.ShowRemainingTime)
-                 Index = Current - Index;
-              displayReplay->SetTotal(IndexToHMSF(Index, false, FramesPerSecond()));
-              if (!Initial)
-                 displayReplay->Flush();
-              }
-           displayReplay->SetProgress(Current, Total);
-           if (!Initial)
-              displayReplay->Flush();
-           displayReplay->SetCurrent(IndexToHMSF(Current, displayFrames, FramesPerSecond()));
-           displayReplay->Flush();
-           lastCurrent = Current;
-           }
-        lastTotal = Total;
-        ShowMode();
-        return true;
+  if (!(Initial || updateTimer.TimedOut()))
+     return visible;
+  if (GetFrameNumber(Current, Total) && Total > 0) {
+     if (!visible) {
+        displayReplay = Skins.Current()->DisplayReplay(modeOnly);
+        displayReplay->SetMarks(&marks);
+        SetNeedsFastResponse(true);
+        visible = true;
         }
+     if (Initial) {
+        if (*fileName) {
+           LOCK_RECORDINGS_READ;
+           if (const cRecording *Recording = Recordings->GetByName(fileName))
+              displayReplay->SetRecording(Recording);
+           }
+        lastCurrent = lastTotal = -1;
+        }
+     if (Current != lastCurrent || Total != lastTotal) {
+        if (Setup.ShowRemainingTime || Total != lastTotal) {
+           int Index = Total;
+           if (Setup.ShowRemainingTime)
+              Index = Current - Index;
+           displayReplay->SetTotal(IndexToHMSF(Index, false, FramesPerSecond()));
+           }
+        displayReplay->SetProgress(Current, Total);
+        displayReplay->SetCurrent(IndexToHMSF(Current, displayFrames, FramesPerSecond()));
+        displayReplay->Flush();
+        lastCurrent = Current;
+        }
+     lastTotal = Total;
+     ShowMode();
+     updateTimer.Set(PROGRESSTIMEOUT);
+     return true;
      }
   return false;
 }
@@ -6005,8 +6009,6 @@ eOSState cReplayControl::ProcessKey(eKeys Key)
      return osEnd;
   if (Key == kNone && !marksModified)
      marks.Update();
-  if (Key != kNone)
-     lastProgressUpdate = 0;
   if (visible) {
      if (timeoutShow && time(NULL) > timeoutShow) {
         Hide();
