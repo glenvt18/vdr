@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: skins.c 4.0 2013/08/18 12:07:22 kls Exp $
+ * $Id: skins.c 4.0.1.2 2019/05/29 16:49:48 kls Exp $
  */
 
 #include "skins.h"
@@ -250,7 +250,10 @@ bool cSkins::SetCurrent(const char *Name)
 eKeys cSkins::Message(eMessageType Type, const char *s, int Seconds)
 {
   if (!cThread::IsMainThread()) {
-     dsyslog("cSkins::Message() called from background thread - ignored! (Use cSkins::QueueMessage() instead)");
+     if (Type != mtStatus)
+        QueueMessage(Type, s, Seconds);
+     else
+        dsyslog("cSkins::Message(%d, \"%s\", %d) called from background thread - ignored! (Use cSkins::QueueMessage() instead)", Type, s, Seconds);
      return kNone;
      }
   switch (Type) {
@@ -351,6 +354,14 @@ void cSkins::ProcessQueuedMessages(void)
   if (!cThread::IsMainThread()) {
      dsyslog("cSkins::ProcessQueuedMessages() called from background thread - ignored!");
      return;
+     }
+  // Check whether there is a cSkinDisplay object (if any) that implements SetMessage():
+  if (cSkinDisplay *sd = cSkinDisplay::Current()) {
+     if (!(dynamic_cast<cSkinDisplayChannel *>(sd) ||
+           dynamic_cast<cSkinDisplayMenu *>(sd) ||
+           dynamic_cast<cSkinDisplayReplay *>(sd) ||
+           dynamic_cast<cSkinDisplayMessage *>(sd)))
+        return;
      }
   cSkinQueuedMessage *msg = NULL;
   // Get the first waiting message:

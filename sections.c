@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: sections.c 4.0 2015/01/14 11:35:53 kls Exp $
+ * $Id: sections.c 4.0.1.1 2019/05/28 15:55:44 kls Exp $
  */
 
 #include "sections.h"
@@ -44,7 +44,7 @@ cSectionHandler::cSectionHandler(cDevice *Device)
 {
   shp = new cSectionHandlerPrivate;
   device = Device;
-  SetDescription("device %d section handler", device->CardIndex() + 1);
+  SetDescription("device %d section handler", device->DeviceNumber() + 1);
   statusCount = 0;
   on = false;
   waitForLock = false;

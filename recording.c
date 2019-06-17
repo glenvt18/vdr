@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: recording.c 4.22 2018/03/17 10:56:13 kls Exp $
+ * $Id: recording.c 4.22.1.4 2019/05/29 14:25:51 kls Exp $
  */
 
 #include "recording.h"
@@ -99,27 +99,33 @@ void cRemoveDeletedRecordingsThread::Action(void)
   if (LockFile.Lock()) {
      time_t StartTime = time(NULL);
      bool deleted = false;
+     bool interrupted = false;
      LOCK_DELETEDRECORDINGS_WRITE;
      for (cRecording *r = DeletedRecordings->First(); r; ) {
          if (cIoThrottle::Engaged())
-            return;
-         if (time(NULL) - StartTime > MAXREMOVETIME)
-            return; // don't stay here too long
-         if (cRemote::HasKeys())
-            return; // react immediately on user input
+            interrupted = true;
+         else if (time(NULL) - StartTime > MAXREMOVETIME)
+            interrupted = true; // don't stay here too long
+         else if (cRemote::HasKeys())
+            interrupted = true; // react immediately on user input
+         if (interrupted)
+            break;
          if (r->Deleted() && time(NULL) - r->Deleted() > DELETEDLIFETIME) {
             cRecording *next = DeletedRecordings->Next(r);
             r->Remove();
             DeletedRecordings->Del(r);
             r = next;
             deleted = true;
-            continue;
             }
-         r = DeletedRecordings->Next(r);
+         else
+            r = DeletedRecordings->Next(r);
          }
      if (deleted) {
-        const char *IgnoreFiles[] = { SORTMODEFILE, TIMERRECFILE, NULL };
-        cVideoDirectory::RemoveEmptyVideoDirectories(IgnoreFiles);
+        cRecordings::TouchUpdate();
+        if (!interrupted) {
+           const char *IgnoreFiles[] = { SORTMODEFILE, TIMERRECFILE, NULL };
+           cVideoDirectory::RemoveEmptyVideoDirectories(IgnoreFiles);
+           }
         }
      }
 }
@@ -604,7 +610,7 @@ char *ExchangeChars(char *s, bool ToFileSystem)
                              char buf[4];
                              sprintf(buf, "#%02X", (unsigned char)*p);
                              memmove(p + 2, p, strlen(p) + 1);
-                             strncpy(p, buf, 3);
+                             memcpy(p, buf, 3);
                              p += 2;
                              }
                           else
@@ -1022,9 +1028,9 @@ int cRecording::Compare(const cListObject &ListObject) const
 {
   cRecording *r = (cRecording *)&ListObject;
   if (Setup.RecSortingDirection == rsdAscending)
-     return strcasecmp(SortName(), r->SortName());
+     return strcmp(SortName(), r->SortName());
   else
-     return strcasecmp(r->SortName(), SortName());
+     return strcmp(r->SortName(), SortName());
 }
 
 bool cRecording::IsInPath(const char *Path) const
@@ -2492,14 +2498,14 @@ void cIndexFileGenerator::Action(void)
 #define MAXINDEXCATCHUP    8 // number of retries
 #define INDEXCATCHUPWAIT 100 // milliseconds
 
-struct tIndexPes {
+struct __attribute__((packed)) tIndexPes {
   uint32_t offset;
   uchar type;
   uchar number;
   uint16_t reserved;
   };
 
-struct tIndexTs {
+struct __attribute__((packed)) tIndexTs {
   uint64_t offset:40; // up to 1TB per file (not using off_t here - must definitely be exactly 64 bit!)
   int reserved:7;     // reserved for future use
   int independent:1;  // marks frames that can be displayed by themselves (for trick modes)
@@ -2634,7 +2640,7 @@ void cIndexFile::ConvertToPes(tIndexTs *IndexTs, int Count)
         IndexPes.type = uchar(IndexTs->independent ? 1 : 2); // I_FRAME : "not I_FRAME" (exact frame type doesn't matter)
         IndexPes.number = uchar(IndexTs->number);
         IndexPes.reserved = 0;
-        memcpy(IndexTs, &IndexPes, sizeof(*IndexTs));
+        memcpy((void *)IndexTs, &IndexPes, sizeof(*IndexTs));
         IndexTs++;
         }
 }
@@ -2890,7 +2896,7 @@ cFileName::cFileName(const char *FileName, bool Record, bool Blocking, bool IsPe
   // Prepare the file name:
   fileName = MALLOC(char, strlen(FileName) + RECORDFILESUFFIXLEN);
   if (!fileName) {
-     esyslog("ERROR: can't copy file name '%s'", fileName);
+     esyslog("ERROR: can't copy file name '%s'", FileName);
      return;
      }
   strcpy(fileName, FileName);

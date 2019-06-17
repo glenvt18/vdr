@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: nit.c 4.5 2018/03/18 10:52:21 kls Exp $
+ * $Id: nit.c 4.5.1.4 2019/05/31 21:47:02 kls Exp $
  */
 
 #include "nit.h"
@@ -97,6 +97,15 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
          }
       delete fld;
 
+      // Necessary for "backwards compatibility mode" according to ETSI EN 300 468:
+      bool ForceDVBS2 = false;
+      for (SI::Loop::Iterator it2; (d = ts.transportStreamDescriptors.getNext(it2)); ) {
+          if (d->getDescriptorTag() == SI::S2SatelliteDeliverySystemDescriptorTag) {
+             ForceDVBS2 = true;
+             break;
+             }
+          }
+
       for (SI::Loop::Iterator it2; (d = ts.transportStreamDescriptors.getNext(it2)); ) {
           switch (d->getDescriptorTag()) {
             case SI::SatelliteDeliverySystemDescriptorTag: {
@@ -110,11 +119,12 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                  dtp.SetCoderateH(CodeRates[sd->getFecInner()]);
                  static int Modulations[] = { QAM_AUTO, QPSK, PSK_8, QAM_16 };
                  dtp.SetModulation(Modulations[sd->getModulationType()]);
-                 dtp.SetSystem(sd->getModulationSystem() ? DVB_SYSTEM_2 : DVB_SYSTEM_1);
+                 bool System = sd->getModulationSystem() || ForceDVBS2;
+                 dtp.SetSystem(System ? DVB_SYSTEM_2 : DVB_SYSTEM_1);
                  static int RollOffs[] = { ROLLOFF_35, ROLLOFF_25, ROLLOFF_20, ROLLOFF_AUTO };
-                 dtp.SetRollOff(sd->getModulationSystem() ? RollOffs[sd->getRollOff()] : ROLLOFF_AUTO);
+                 dtp.SetRollOff(System ? RollOffs[sd->getRollOff()] : ROLLOFF_AUTO);
                  int SymbolRate = BCD2INT(sd->getSymbolRate()) / 10;
-                 dbgnit("    %s %d %c %d %d\n", *cSource::ToString(Source), Frequency, dtp.Polarization(), SymbolRate, cChannel::Transponder(Frequency, dtp.Polarization()));
+                 dbgnit("    %s %d %c %d %d DVB-S%d\n", *cSource::ToString(Source), Frequency, dtp.Polarization(), SymbolRate, cChannel::Transponder(Frequency, dtp.Polarization()), System ? 2 : 1);
                  if (Setup.UpdateChannels >= 5) {
                     bool found = false;
                     bool forceTransponderUpdate = false;
@@ -125,7 +135,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                            dtp.SetStreamId(dtpc.StreamId());
                            //
                            int transponder = Channel->Transponder();
-                           found = true;
                            if (!ISTRANSPONDER(cChannel::Transponder(Frequency, dtp.Polarization()), transponder)) {
                               for (int n = 0; n < NumFrequencies; n++) {
                                   if (ISTRANSPONDER(cChannel::Transponder(Frequencies[n], dtp.Polarization()), transponder)) {
@@ -134,7 +143,10 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                                      }
                                   }
                               }
-                           if (ISTRANSPONDER(cChannel::Transponder(Frequency, dtp.Polarization()), Transponder())) // only modify channels if we're actually receiving this transponder
+                           if (!ISTRANSPONDER(cChannel::Transponder(Frequency, dtp.Polarization()), transponder))
+                              continue; // a channel with obsolete/wrong/other(?) transponder
+                           found = true;
+                           if (ISTRANSPONDER(transponder, Transponder())) // only modify channels if we're actually receiving this transponder
                               ChannelsModified |= Channel->SetTransponderData(Source, Frequency, SymbolRate, dtp.ToString('S'));
                            else if (Channel->Srate() != SymbolRate || strcmp(Channel->Parameters(), dtp.ToString('S')))
                               forceTransponderUpdate = true; // get us receiving this transponder
@@ -151,8 +163,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                            }
                        }
                     }
-                 if (ISTRANSPONDER(cChannel::Transponder(Frequency, dtp.Polarization()), Transponder()))
-                    sdtFilter->Trigger(Source);
                  }
                  break;
             case SI::S2SatelliteDeliverySystemDescriptorTag: {
@@ -188,7 +198,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                     for (cChannel *Channel = Channels->First(); Channel; Channel = Channels->Next(Channel)) {
                         if (!Channel->GroupSep() && Channel->Source() == Source && Channel->Nid() == ts.getOriginalNetworkId() && Channel->Tid() == ts.getTransportStreamId()) {
                            int transponder = Channel->Transponder();
-                           found = true;
                            if (!ISTRANSPONDER(Frequency / 1000, transponder)) {
                               for (int n = 0; n < NumFrequencies; n++) {
                                   if (ISTRANSPONDER(Frequencies[n] / 1000, transponder)) {
@@ -197,7 +206,10 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                                      }
                                   }
                               }
-                           if (ISTRANSPONDER(Frequency / 1000, Transponder())) // only modify channels if we're actually receiving this transponder
+                           if (!ISTRANSPONDER(Frequency / 1000, transponder))
+                              continue; // a channel with obsolete/wrong/other(?) transponder
+                           found = true;
+                           if (ISTRANSPONDER(transponder, Transponder())) // only modify channels if we're actually receiving this transponder
                               ChannelsModified |= Channel->SetTransponderData(Source, Frequency, SymbolRate, dtp.ToString('C'));
                            else if (Channel->Srate() != SymbolRate || strcmp(Channel->Parameters(), dtp.ToString('C')))
                               forceTransponderUpdate = true; // get us receiving this transponder
@@ -214,8 +226,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                            }
                        }
                     }
-                 if (ISTRANSPONDER(Frequency / 1000, Transponder()))
-                    sdtFilter->Trigger(Source);
                  }
                  break;
             case SI::TerrestrialDeliverySystemDescriptorTag: {
@@ -254,7 +264,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                            dtp.SetTransmission(dtpc.Transmission());
                            //
                            int transponder = Channel->Transponder();
-                           found = true;
                            if (!ISTRANSPONDER(Frequency / 1000000, transponder)) {
                               for (int n = 0; n < NumFrequencies; n++) {
                                   if (ISTRANSPONDER(Frequencies[n] / 1000000, transponder)) {
@@ -263,7 +272,10 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                                      }
                                   }
                               }
-                           if (ISTRANSPONDER(Frequency / 1000000, Transponder())) // only modify channels if we're actually receiving this transponder
+                           if (!ISTRANSPONDER(Frequency / 1000000, transponder))
+                              continue; // a channel with obsolete/wrong/other(?) transponder
+                           found = true;
+                           if (ISTRANSPONDER(transponder, Transponder())) // only modify channels if we're actually receiving this transponder
                               ChannelsModified |= Channel->SetTransponderData(Source, Frequency, 0, dtp.ToString('T'));
                            else if (strcmp(Channel->Parameters(), dtp.ToString('T')))
                               forceTransponderUpdate = true; // get us receiving this transponder
@@ -280,8 +292,6 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                            }
                        }
                     }
-                 if (ISTRANSPONDER(Frequency / 1000000, Transponder()))
-                    sdtFilter->Trigger(Source);
                  }
                  break;
             case SI::ExtensionDescriptorTag: {
@@ -361,5 +371,9 @@ void cNitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
           delete d;
           }
       }
+  if (nit.getSectionNumber() == nit.getLastSectionNumber()) {
+     dbgnit("    trigger sdtFilter for current tp %d\n", Transponder());
+     sdtFilter->Trigger(Source());
+     }
   StateKey.Remove(ChannelsModified);
 }

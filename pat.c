@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: pat.c 4.3 2016/12/23 14:02:07 kls Exp $
+ * $Id: pat.c 4.3.1.2 2019/03/15 13:13:40 kls Exp $
  */
 
 #include "pat.h"
@@ -372,7 +372,8 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                }
            if (numPmtEntries > 0 && pmtIndex < 0)
               pmtIndex = 0;
-           Add(GetPmtPid(pmtIndex), SI::TableIdPMT);
+           if (pmtIndex >= 0)
+              Add(GetPmtPid(pmtIndex), SI::TableIdPMT);
            patVersion = pat.getVersionNumber();
            timer.Set(PMT_SCAN_TIMEOUT);
            }
@@ -544,6 +545,7 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                          }
                       // fall through
               case 0x81: // STREAMTYPE_USER_PRIVATE
+              case 0x87: // eac3
                       if (Setup.StandardCompliance == STANDARD_ANSISCTE) { // ATSC A/53 AUDIO (ANSI/SCTE 57)
                          char lang[MAXLANGCODE1] = { 0 };
                          SI::Descriptor *d;
@@ -574,7 +576,8 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                          break;
                          }
                       // fall through
-              case 0x83 ... 0xFF: // STREAMTYPE_USER_PRIVATE
+              case 0x83 ... 0x86: // STREAMTYPE_USER_PRIVATE
+              case 0x88 ... 0xFF: // STREAMTYPE_USER_PRIVATE
                       {
                       char lang[MAXLANGCODE1] = { 0 };
                       bool IsAc3 = false;

@@ -8,7 +8,7 @@
  * Robert Schneider <Robert.Schneider@web.de> and Rolf Hakenes <hakenes@hippomi.de>.
  * Adapted to 'libsi' for VDR 1.3.0 by Marcel Wiesweg <marcel.wiesweg@gmx.de>.
  *
- * $Id: eit.c 4.5 2018/03/31 13:40:32 kls Exp $
+ * $Id: eit.c 4.5.1.2 2019/05/21 21:25:00 kls Exp $
  */
 
 #include "eit.h"
@@ -19,6 +19,8 @@
 #include "libsi/descriptor.h"
 
 #define VALID_TIME (31536000 * 2) // two years
+
+#define DBGEIT 0
 
 // --- cEIT ------------------------------------------------------------------
 
@@ -130,8 +132,34 @@ cEIT::cEIT(cSectionSyncerHash &SectionSyncerHash, int Source, u_char Tid, const 
       if (pEvent->TableID() > 0x4E) // for backwards compatibility, table ids less than 0x4E are never overwritten
          pEvent->SetTableID(Tid);
       if (Tid == 0x4E) { // we trust only the present/following info on the actual TS
-         if (SiEitEvent.getRunningStatus() >= SI::RunningStatusNotRunning)
-            pSchedule->SetRunningStatus(pEvent, SiEitEvent.getRunningStatus(), Channel);
+         int RunningStatus = SiEitEvent.getRunningStatus();
+#if DBGEIT
+         if (Process)
+            dsyslog("channel %d (%s) event %s status %d (raw data from '%s' section)", Channel->Number(), Channel->Name(), *pEvent->ToDescr(), RunningStatus, getSectionNumber() ? "following" : "present");
+#endif
+         if (RunningStatus >= SI::RunningStatusNotRunning) {
+            // Workaround for broadcasters who set an event to status "not running" where
+            // this is inappropriate:
+            if (RunningStatus != pEvent->RunningStatus()) { // if the running status of the event has changed...
+               if (RunningStatus == SI::RunningStatusNotRunning) { // ...and the new status is "not running"...
+                  int OverrideStatus = -1;
+                  if (getSectionNumber() == 0) { // ...and if this the "present" event...
+                     if (pEvent->RunningStatus() == SI::RunningStatusPausing) // ...and if the event has already been set to "pausing"...
+                        OverrideStatus = SI::RunningStatusPausing; // ...then we ignore the faulty new status and stay with "pausing"
+                     }
+                  else // ...and if this is the "following" event...
+                     OverrideStatus = SI::RunningStatusUndefined; // ...then we ignore the faulty new status and fall back to "undefined"
+                  if (OverrideStatus >= 0) {
+#if DBGEIT
+                     if (Process)
+                        dsyslog("channel %d (%s) event %s status %d (ignored status %d from '%s' section)", Channel->Number(), Channel->Name(), *pEvent->ToDescr(), OverrideStatus, RunningStatus, getSectionNumber() ? "following" : "present");
+#endif
+                     RunningStatus = OverrideStatus;
+                     }
+                  }
+               }
+            pSchedule->SetRunningStatus(pEvent, RunningStatus, Channel);
+            }
          if (!Process)
             continue;
          }
@@ -388,8 +416,7 @@ time_t cEitFilter::disableUntil = 0;
 
 cEitFilter::cEitFilter(void)
 {
-//Set(0x12, 0x40, 0xC0);  // event info now&next actual/other TS (0x4E/0x4F), future actual/other TS (0x5X/0x6X) // TODO: remove later
-  Set(0x12, 0x40, 0xE0);  // event info now&next actual/other TS (0x4E/0x4F), future actual TS (0x5X)
+  Set(0x12, 0x40, 0xC0);  // event info now&next actual/other TS (0x4E/0x4F), future actual/other TS (0x5X/0x6X)
   Set(0x14, 0x70);        // TDT
 }
 
@@ -416,8 +443,7 @@ void cEitFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
      }
   switch (Pid) {
     case 0x12: {
-       //if (Tid >= 0x4E && Tid <= 0x6F) // TODO: remove later
-         if (Tid == 0x4E || Tid >= 0x50 && Tid <= 0x5F)
+         if (Tid >= 0x4E && Tid <= 0x6F)
             cEIT EIT(sectionSyncerHash, Source(), Tid, Data);
          }
          break;

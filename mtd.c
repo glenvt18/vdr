@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: mtd.c 1.12 2017/10/31 12:16:39 kls Exp $
+ * $Id: mtd.c 1.12.1.2 2019/05/28 15:55:44 kls Exp $
  */
 
 #include "mtd.h"
@@ -127,11 +127,11 @@ bool cMtdHandler::IsActivating(void)
   return false;
 }
 
-bool cMtdHandler::Devices(cVector<int> &CardIndexes)
+bool cMtdHandler::Devices(cVector<int> &DeviceNumbers)
 {
   for (int i = 0; i < camSlots.Size(); i++)
-      camSlots[i]->Devices(CardIndexes);
-  return CardIndexes.Size() > 0;
+      camSlots[i]->Devices(DeviceNumbers);
+  return DeviceNumbers.Size() > 0;
 }
 
 void cMtdHandler::UnAssignAll(void)
@@ -224,7 +224,10 @@ void cMtdMapper::Clear(void)
 
 void MtdMapSid(uchar *p, cMtdMapper *MtdMapper)
 {
-  Poke13(p, MtdMapper->RealToUniqSid(Peek13(p)));
+  uint16_t RealSid = p[0] << 8 | p[1];
+  uint16_t UniqSid = MtdMapper->RealToUniqSid(RealSid);
+  p[0] = UniqSid >> 8;
+  p[1] = UniqSid & 0xff;
 }
 
 void MtdMapPid(uchar *p, cMtdMapper *MtdMapper)

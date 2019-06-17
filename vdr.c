@@ -22,7 +22,7 @@
  *
  * The project's page is at http://www.tvdr.de
  *
- * $Id: vdr.c 4.25 2018/04/10 13:24:43 kls Exp $
+ * $Id: vdr.c 4.25.1.5 2019/05/23 10:02:45 kls Exp $
  */
 
 #include <getopt.h>
@@ -126,7 +126,25 @@ static bool SetUser(const char *User, bool UserDump)
 static bool DropCaps(void)
 {
   // drop all capabilities except selected ones
-  cap_t caps = cap_from_text("= cap_sys_nice,cap_sys_time,cap_net_raw=ep");
+  cap_t caps_all = cap_get_proc();
+  if (!caps_all) {
+     fprintf(stderr, "vdr: cap_get_proc failed: %s\n", strerror(errno));
+     return false;
+     }
+  char *caps_text = cap_to_text(caps_all, NULL);
+  if (!caps_text) {
+     fprintf(stderr, "vdr: cap_to_text failed: %s\n", strerror(errno));
+     return false;
+     }
+  if (cap_free(caps_all)) {
+     fprintf(stderr, "vdr: cap_free failed: %s\n", strerror(errno));
+     return false;
+     }
+  cap_t caps;
+  if (strstr(caps_text,"cap_sys_time"))
+     caps = cap_from_text("= cap_sys_nice,cap_sys_time,cap_net_raw=ep");
+  else
+     caps = cap_from_text("= cap_sys_nice,cap_net_raw=ep");
   if (!caps) {
      fprintf(stderr, "vdr: cap_from_text failed: %s\n", strerror(errno));
      return false;
@@ -1164,7 +1182,9 @@ int main(int argc, char *argv[])
           if (Timers->DeleteExpired())
              TimersModified = true;
           // Make sure there is enough free disk space for ongoing recordings:
-          AssertFreeDiskSpace(Timers->GetMaxPriority());
+          int MaxPriority = Timers->GetMaxPriority();
+          if (MaxPriority >= 0)
+             AssertFreeDiskSpace(MaxPriority);
           TimersStateKey.Remove(TimersModified);
         }
         // Recordings:
@@ -1176,8 +1196,7 @@ int main(int argc, char *argv[])
         if (!Menu && !cOsd::IsOpen())
            Menu = CamControl();
         // Queued messages:
-        if (!Skins.IsOpen())
-           Skins.ProcessQueuedMessages();
+        Skins.ProcessQueuedMessages();
         // User Input:
         cOsdObject *Interact = Menu ? Menu : cControl::Control();
         eKeys key = Interface->GetKey(!Interact || !Interact->NeedsFastResponse());
@@ -1515,9 +1534,7 @@ int main(int argc, char *argv[])
               ShutdownHandler.countdown.Cancel();
            }
 
-        if ((Now - LastInteract) > ACTIVITYTIMEOUT && !cRecordControls::Active() && !RecordingsHandler.Active() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
-           // Handle housekeeping tasks
-
+        if (!cControl::Control() && !cRecordControls::Active() && !RecordingsHandler.Active() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
            // Shutdown:
            // Check whether VDR will be ready for shutdown in SHUTDOWNWAIT seconds:
            time_t Soon = Now + SHUTDOWNWAIT;
@@ -1536,13 +1553,15 @@ int main(int argc, char *argv[])
               // Do this again a bit later:
               ShutdownHandler.SetRetry(SHUTDOWNRETRY);
               }
-
-           // Disk housekeeping:
-           RemoveDeletedRecordings();
-           ListGarbageCollector.Purge();
-           cSchedules::Cleanup();
-           // Plugins housekeeping:
-           PluginManager.Housekeeping();
+           // Handle housekeeping tasks
+           if ((Now - LastInteract) > ACTIVITYTIMEOUT) {
+              // Disk housekeeping:
+              RemoveDeletedRecordings();
+              ListGarbageCollector.Purge();
+              cSchedules::Cleanup();
+              // Plugins housekeeping:
+              PluginManager.Housekeeping();
+              }
            }
 
         ReportEpgBugFixStats();

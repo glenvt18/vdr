@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: ci.h 4.12 2018/03/17 12:17:37 kls Exp $
+ * $Id: ci.h 4.12.1.2 2019/05/28 15:55:44 kls Exp $
  */
 
 #ifndef __CI_H
@@ -254,6 +254,7 @@ private:
   cList<cCiCaProgramData> caProgramList;
   bool mtdAvailable;
   cMtdHandler *mtdHandler;
+  void KeepSharedCaPids(int ProgramNumber, const int *CaSystemIds, int *CaPids);
   void NewConnection(void);
   void DeleteAllConnections(void);
   void Process(cTPDU *TPDU = NULL);
@@ -330,9 +331,9 @@ public:
        ///< class function.
   cDevice *Device(void) { return assignedDevice; }
        ///< Returns the device this CAM slot is currently assigned to.
-  bool Devices(cVector<int> &CardIndexes);
-       ///< Adds the card indexes of any devices that currently use this CAM to
-       ///< the given CardIndexes. This can be more than one in case of MTD.
+  bool Devices(cVector<int> &DeviceNumbers);
+       ///< Adds the numbers of any devices that currently use this CAM to
+       ///< the given DeviceNumbers. This can be more than one in case of MTD.
        ///< Returns true if the array is not empty.
   bool WantsTsData(void) const { return caPidReceiver != NULL; }
        ///< Returns true if this CAM slot wants to receive the TS data through

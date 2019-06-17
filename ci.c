@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: ci.c 4.21 2018/03/19 16:37:03 kls Exp $
+ * $Id: ci.c 4.21.1.5 2019/05/28 15:55:44 kls Exp $
  */
 
 #include "ci.h"
@@ -225,7 +225,7 @@ void cCaPidReceiver::Receive(const uchar *Data, int Length)
            }
         else {
            esyslog("ERROR: buffer overflow in cCaPidReceiver::Receive()");
-           bufp = 0;
+           bufp = NULL;
            length = 0;
            }
         }
@@ -250,12 +250,22 @@ void cCaPidReceiver::Receive(const uchar *Data, int Length)
                i += p[i + 1] + 2 - 1; // -1 to compensate for the loop increment
                }
             }
-        p = NULL;
-        bufp = 0;
-        length = 0;
-        memcpy(mtdCatBuffer, Data, TS_SIZE);
-        if (MtdCamSlot)
+        if (MtdCamSlot) {
+           if (!bufp && length) {
+              // update crc32 - but only single packet CAT is handled for now:
+              uint32_t crc = SI::CRC32::crc32((const char *)p - 8, length + 8 - 4, 0xFFFFFFFF); // <TableIdCAT....>[crc32]
+              uchar *c = const_cast<uchar *>(p + length - 4);
+              *c++ = crc >> 24;
+              *c++ = crc >> 16;
+              *c++ = crc >> 8;
+              *c++ = crc;
+              }
+           memcpy(mtdCatBuffer, Data, TS_SIZE);
            MtdCamSlot->PutCat(mtdCatBuffer, TS_SIZE);
+           }
+        p = NULL;
+        bufp = NULL;
+        length = 0;
         }
      }
 }
@@ -1213,6 +1223,7 @@ void cCiConditionalAccessSupport::Process(int Length, const uint8_t *Data)
         }
      else {
         dsyslog("CAM %d: doesn't reply to QUERY - only a single channel can be decrypted", CamSlot()->SlotNumber());
+        CamSlot()->MtdActivate(false);
         state = 4; // normal operation
         }
      }
@@ -1580,9 +1591,12 @@ bool cCiMMI::SendAnswer(const char *Text)
   struct tAnswer { uint8_t id; char text[256]; };//XXX
   tAnswer answer;
   answer.id = Text ? AI_ANSWER : AI_CANCEL;
-  if (Text)
-     strncpy(answer.text, Text, sizeof(answer.text));
-  SendData(AOT_ANSW, Text ? strlen(Text) + 1 : 1, (uint8_t *)&answer);
+  int len = 0;
+  if (Text) {
+     len = min(sizeof(answer.text), strlen(Text));
+     memcpy(answer.text, Text, len);
+     }
+  SendData(AOT_ANSW, len + 1, (uint8_t *)&answer);
   return true;
 }
 
@@ -2219,14 +2233,14 @@ bool cCamSlot::Assign(cDevice *Device, bool Query)
   return false;
 }
 
-bool cCamSlot::Devices(cVector<int> &CardIndexes)
+bool cCamSlot::Devices(cVector<int> &DeviceNumbers)
 {
   cMutexLock MutexLock(&mutex);
   if (mtdHandler)
-     return mtdHandler->Devices(CardIndexes);
+     return mtdHandler->Devices(DeviceNumbers);
   if (assignedDevice)
-     CardIndexes.Append(assignedDevice->CardIndex());
-  return CardIndexes.Size() > 0;
+     DeviceNumbers.Append(assignedDevice->DeviceNumber());
+  return DeviceNumbers.Size() > 0;
 }
 
 void cCamSlot::NewConnection(void)
@@ -2504,8 +2518,10 @@ void cCamSlot::BuildCaPmts(uint8_t CmdId, cCiCaPmtList &CaPmtList, cMtdMapper *M
                   if (GetCaPids(source, transponder, p->programNumber, CaSystemIds, MAXRECEIVEPIDS + 1, CaPids) > 0) {
                      if (Active)
                         caPidReceiver->AddPids(CaPids);
-                     else
+                     else {
+                        KeepSharedCaPids(p->programNumber, CaSystemIds, CaPids);
                         caPidReceiver->DelPids(CaPids);
+                        }
                      }
                   }
                if (RepliesToQuery())
@@ -2519,6 +2535,43 @@ void cCamSlot::BuildCaPmts(uint8_t CmdId, cCiCaPmtList &CaPmtList, cMtdMapper *M
      else if (CmdId == CPCI_NOT_SELECTED)
         CaPmtList.Add(CmdId, 0, 0, 0, NULL);
      }
+}
+
+void cCamSlot::KeepSharedCaPids(int ProgramNumber, const int *CaSystemIds, int *CaPids)
+{
+  int numPids = 0;
+  int *pCaPids = CaPids;
+  while (*pCaPids) {
+        numPids++;
+        pCaPids++;
+        }
+  if (numPids <= 0)
+     return;
+  int CaPids2[MAXRECEIVEPIDS + 1];
+  for (cCiCaProgramData *p = caProgramList.First(); p; p = caProgramList.Next(p)) {
+      if (p->programNumber != ProgramNumber) {
+         if (GetCaPids(source, transponder, p->programNumber, CaSystemIds, MAXRECEIVEPIDS + 1, CaPids2) > 0) {
+            int *pCaPids2 = CaPids2;
+            while (*pCaPids2) {
+                  pCaPids = CaPids;
+                  while (*pCaPids) {
+                        if (*pCaPids == *pCaPids2) {
+                           dsyslog("CAM %d: keeping shared CA pid %d", SlotNumber(), *pCaPids);
+                           // To remove *pCaPids from CaPids we overwrite it with the last valie in the list, and then strip the last value:
+                           *pCaPids = CaPids[numPids - 1];
+                           numPids--;
+                           CaPids[numPids] = 0;
+                           if (numPids <= 0)
+                              return;
+                           }
+                        else
+                           pCaPids++;
+                        }
+                  pCaPids2++;
+                  }
+            }
+         }
+      }
 }
 
 void cCamSlot::SendCaPmts(cCiCaPmtList &CaPmtList)

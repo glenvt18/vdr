@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: menu.c 4.74 2018/04/14 10:24:41 kls Exp $
+ * $Id: menu.c 4.74.1.6 2019/05/28 15:55:44 kls Exp $
  */
 
 #include "menu.h"
@@ -576,7 +576,7 @@ eOSState cMenuChannels::ProcessKey(eKeys Key)
          break;
     default:
          if (state == osUnknown) {
-            switch (Key) {
+            switch (int(Key)) {
               case k0 ... k9:
                             return Number(Key);
               case kOk:     return Switch();
@@ -586,6 +586,20 @@ eOSState cMenuChannels::ProcessKey(eKeys Key)
               case kBlue:   if (!HasSubMenu())
                                Mark();
                             break;
+              case kChanUp|k_Repeat:
+              case kChanUp:
+              case kChanDn|k_Repeat:
+              case kChanDn: {
+                   LOCK_CHANNELS_READ;
+                   int CurrentChannelNr = cDevice::CurrentChannel();
+                   for (cMenuChannelItem *ci = (cMenuChannelItem *)First(); ci; ci = (cMenuChannelItem *)ci->Next()) {
+                       if (!ci->Channel()->GroupSep() && ci->Channel()->Number() == CurrentChannelNr) {
+                          SetCurrent(ci);
+                          Display();
+                          break;
+                          }
+                       }
+                   }
               default: break;
               }
             }
@@ -1075,7 +1089,7 @@ static bool HandleRemoteModifications(cTimer *NewTimer, cTimer *OldTimer = NULL)
 {
   cString ErrorMessage;
   if (!HandleRemoteTimerModifications(NewTimer, OldTimer, &ErrorMessage)) {
-     Skins.Message(mtError, ErrorMessage);
+     Skins.QueueMessage(mtError, ErrorMessage);
      return false;
      }
   return true;
@@ -3878,16 +3892,16 @@ bool cMenuSetupCAMItem::Changed(void)
   else if (camSlot->IsActivating())
      // TRANSLATORS: note the leading blank!
      Activating = tr(" (activating)");
-  cVector<int> CardIndexes;
+  cVector<int> DeviceNumbers;
   for (cCamSlot *CamSlot = CamSlots.First(); CamSlot; CamSlot = CamSlots.Next(CamSlot)) {
       if (CamSlot == camSlot || CamSlot->MasterSlot() == camSlot)
-         CamSlot->Devices(CardIndexes);
+         CamSlot->Devices(DeviceNumbers);
       }
-  if (CardIndexes.Size() > 0) {
+  if (DeviceNumbers.Size() > 0) {
      AssignedDevice = cString::sprintf(" %s", tr("@ device"));
-     CardIndexes.Sort(CompareInts);
-     for (int i = 0; i < CardIndexes.Size(); i++)
-         AssignedDevice = cString::sprintf("%s %d", *AssignedDevice, CardIndexes[i] + 1);
+     DeviceNumbers.Sort(CompareInts);
+     for (int i = 0; i < DeviceNumbers.Size(); i++)
+         AssignedDevice = cString::sprintf("%s %d", *AssignedDevice, DeviceNumbers[i]);
      }
 
   cString buffer = cString::sprintf(" %d %s%s%s", camSlot->SlotNumber(), CamName, *AssignedDevice, Activating);
@@ -4626,14 +4640,17 @@ cDisplayChannel::cDisplayChannel(int Number, bool Switched)
   cOsdProvider::OsdSizeChanged(osdState); // just to get the current state
   positioner = NULL;
   channel = NULL;
-  LOCK_CHANNELS_READ;
-  channel = Channels->GetByNumber(Number);
-  lastPresent = lastFollowing = NULL;
-  if (channel) {
-     DisplayChannel();
-     DisplayInfo();
+  {
+    LOCK_CHANNELS_READ;
+    channel = Channels->GetByNumber(Number);
+    lastPresent = lastFollowing = NULL;
+    if (channel) {
+       DisplayChannel();
+       DisplayInfo();
+       }
+  }
+  if (channel)
      displayChannel->Flush();
-     }
   lastTime.Set();
 }
 
@@ -4651,8 +4668,10 @@ cDisplayChannel::cDisplayChannel(eKeys FirstKey)
   displayChannel = Skins.Current()->DisplayChannel(withInfo);
   positioner = NULL;
   channel = NULL;
-  LOCK_CHANNELS_READ;
-  channel = Channels->GetByNumber(cDevice::CurrentChannel());
+  {
+    LOCK_CHANNELS_READ;
+    channel = Channels->GetByNumber(cDevice::CurrentChannel());
+  }
   ProcessKey(FirstKey);
 }
 
@@ -4699,6 +4718,8 @@ void cDisplayChannel::Refresh(void)
 const cChannel *cDisplayChannel::NextAvailableChannel(const cChannel *Channel, int Direction)
 {
   if (Direction) {
+     cControl::Shutdown(); // prevents old channel from being shown too long if GetDevice() takes longer
+                           // and, if decrypted, this removes the now superflous PIDs from the CAM, too
      LOCK_CHANNELS_READ;
      while (Channel) {
            Channel = Direction > 0 ? Channels->Next(Channel) : Channels->Prev(Channel);
@@ -4868,31 +4889,33 @@ eOSState cDisplayChannel::ProcessKey(eKeys Key)
             }
     };
   if (positioner || !timeout || lastTime.Elapsed() < (uint64_t)(Setup.ChannelInfoTime * 1000)) {
-     LOCK_CHANNELS_READ;
-     if (Key == kNone && !number && group < 0 && !NewChannel && channel && channel->Number() != cDevice::CurrentChannel()) {
-        // makes sure a channel switch through the SVDRP CHAN command is displayed
-        channel = Channels->GetByNumber(cDevice::CurrentChannel());
-        Refresh();
-        lastTime.Set();
-        }
-     DisplayInfo();
-     if (NewChannel) {
-        SetTrackDescriptions(NewChannel->Number()); // to make them immediately visible in the channel display
-        Channels->SwitchTo(NewChannel->Number());
-        SetTrackDescriptions(NewChannel->Number()); // switching the channel has cleared them
-        channel = NewChannel;
-        }
-     const cPositioner *Positioner = cDevice::ActualDevice()->Positioner();
-     bool PositionerMoving = Positioner && Positioner->IsMoving();
-     SetNeedsFastResponse(PositionerMoving);
-     if (!PositionerMoving) {
-        if (positioner)
-           lastTime.Set(); // to keep the channel display up a few seconds after the target position has been reached
-        Positioner = NULL;
-        }
-     if (Positioner || positioner) // making sure we call SetPositioner(NULL) if there is a switch from "with" to "without" positioner
-        displayChannel->SetPositioner(Positioner);
-     positioner = Positioner;
+     {
+       LOCK_CHANNELS_READ;
+       if (Key == kNone && !number && group < 0 && !NewChannel && channel && channel->Number() != cDevice::CurrentChannel()) {
+          // makes sure a channel switch through the SVDRP CHAN command is displayed
+          channel = Channels->GetByNumber(cDevice::CurrentChannel());
+          Refresh();
+          lastTime.Set();
+          }
+       DisplayInfo();
+       if (NewChannel) {
+          SetTrackDescriptions(NewChannel->Number()); // to make them immediately visible in the channel display
+          Channels->SwitchTo(NewChannel->Number());
+          SetTrackDescriptions(NewChannel->Number()); // switching the channel has cleared them
+          channel = NewChannel;
+          }
+       const cPositioner *Positioner = cDevice::ActualDevice()->Positioner();
+       bool PositionerMoving = Positioner && Positioner->IsMoving();
+       SetNeedsFastResponse(PositionerMoving);
+       if (!PositionerMoving) {
+          if (positioner)
+             lastTime.Set(); // to keep the channel display up a few seconds after the target position has been reached
+          Positioner = NULL;
+          }
+       if (Positioner || positioner) // making sure we call SetPositioner(NULL) if there is a switch from "with" to "without" positioner
+          displayChannel->SetPositioner(Positioner);
+       positioner = Positioner;
+     }
      displayChannel->Flush();
      return osContinue;
      }
@@ -5208,7 +5231,7 @@ cRecordControl::cRecordControl(cDevice *Device, cTimers *Timers, cTimer *Timer, 
   if (!timer) {
      timer = new cTimer(true, Pause);
      Timers->Add(timer);
-     instantId = cString::sprintf(cDevice::NumDevices() > 1 ? "%s - %d" : "%s", timer->Channel()->Name(), device->CardIndex() + 1);
+     instantId = cString::sprintf(cDevice::NumDevices() > 1 ? "%s - %d" : "%s", timer->Channel()->Name(), device->DeviceNumber() + 1);
      }
   timer->SetPending(true);
   timer->SetRecording(true);
