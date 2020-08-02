@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: device.c 4.27.1.3 2019/05/28 15:55:44 kls Exp $
+ * $Id: device.c 4.35 2020/07/13 08:16:41 kls Exp $
  */
 
 #include "device.h"
@@ -54,6 +54,11 @@ cDeviceHook::cDeviceHook(void)
 }
 
 bool cDeviceHook::DeviceProvidesTransponder(const cDevice *Device, const cChannel *Channel) const
+{
+  return true;
+}
+
+bool cDeviceHook::DeviceProvidesEIT(const cDevice *Device) const
 {
   return true;
 }
@@ -421,8 +426,8 @@ cDevice *cDevice::GetDeviceForTransponder(const cChannel *Channel, int Priority)
             return d; // if any device is tuned to the transponder, we're done
          if (d->ProvidesTransponder(Channel)) {
             if (d->MaySwitchTransponder(Channel))
-               Device = d; // this device may switch to the transponder without disturbing any receiver or live view
-            else if (!d->Occupied() && d->MaySwitchTransponder(Channel)) { // MaySwitchTransponder() implicitly calls Occupied()
+               return d; // this device may switch to the transponder without disturbing any receiver or live view
+            else if (!d->Occupied() && !d->IsBonded()) { // MaySwitchTransponder() implicitly calls Occupied()
                if (d->Priority() < Priority && (!Device || d->Priority() < Device->Priority()))
                   Device = d; // use this one only if no other with less impact can be found
                }
@@ -718,6 +723,17 @@ bool cDevice::DeviceHooksProvidesTransponder(const cChannel *Channel) const
   return true;
 }
 
+bool cDevice::DeviceHooksProvidesEIT(void) const
+{
+  cDeviceHook *Hook = deviceHooks.First();
+  while (Hook) {
+        if (!Hook->DeviceProvidesEIT(this))
+           return false;
+        Hook = deviceHooks.Next(Hook);
+        }
+  return true;
+}
+
 bool cDevice::ProvidesTransponder(const cChannel *Channel) const
 {
   return false;
@@ -792,9 +808,9 @@ bool cDevice::SwitchChannel(const cChannel *Channel, bool LiveView)
   for (int i = 3; i--;) {
       switch (SetChannel(Channel, LiveView)) {
         case scrOk:           return true;
-        case scrNotAvailable: Skins.Message(mtInfo, tr("Channel not available!"));
+        case scrNotAvailable: Skins.QueueMessage(mtInfo, tr("Channel not available!"));
                               return false;
-        case scrNoTransfer:   Skins.Message(mtError, tr("Can't start Transfer Mode!"));
+        case scrNoTransfer:   Skins.QueueMessage(mtError, tr("Can't start Transfer Mode!"));
                               return false;
         case scrFailed:       break; // loop will retry
         default:              esyslog("ERROR: invalid return value from SetChannel");
@@ -1806,17 +1822,16 @@ void cDevice::Detach(cReceiver *Receiver)
   bool receiversLeft = false;
   mutexReceiver.Lock();
   for (int i = 0; i < MAXRECEIVERS; i++) {
-      if (receiver[i] == Receiver) {
+      if (receiver[i] == Receiver)
          receiver[i] = NULL;
-         Receiver->device = NULL;
-         Receiver->Activate(false);
-         for (int n = 0; n < Receiver->numPids; n++)
-             DelPid(Receiver->pids[n]);
-         }
       else if (receiver[i])
          receiversLeft = true;
       }
   mutexReceiver.Unlock();
+  Receiver->device = NULL;
+  Receiver->Activate(false);
+  for (int n = 0; n < Receiver->numPids; n++)
+      DelPid(Receiver->pids[n]);
   if (camSlot) {
      if (Receiver->priority > MINPRIORITY) { // priority check to avoid an infinite loop with the CAM slot's caPidReceiver
         camSlot->StartDecrypting();

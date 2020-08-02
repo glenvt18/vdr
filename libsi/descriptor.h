@@ -6,7 +6,7 @@
  *   the Free Software Foundation; either version 2 of the License, or     *
  *   (at your option) any later version.                                   *
  *                                                                         *
- *   $Id: descriptor.h 4.0.1.1 2019/03/15 22:38:36 kls Exp $
+ *   $Id: descriptor.h 4.2 2020/06/23 09:27:09 kls Exp $
  *                                                                         *
  ***************************************************************************/
 
@@ -295,6 +295,7 @@ private:
 class ComponentDescriptor : public Descriptor {
 public:
    int getStreamContent() const;
+   int getStreamContentExt() const;
    int getComponentType() const;
    int getComponentTag() const;
    char languageCode[4];

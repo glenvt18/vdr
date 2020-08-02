@@ -6,7 +6,7 @@
  *   the Free Software Foundation; either version 2 of the License, or     *
  *   (at your option) any later version.                                   *
  *                                                                         *
- *   $Id: si.h 4.0 2015/02/10 13:54:28 kls Exp $
+ *   $Id: si.h 4.3 2020/05/15 12:32:51 kls Exp $
  *                                                                         *
  ***************************************************************************/
 
@@ -508,7 +508,10 @@ public:
    //so the maximum there is 256.
    //returns the given buffer for convenience.
    //The emphasis marks 0x86 and 0x87 are still available.
-   char *getText(char *buffer, int size);
+   //If fromCode is given, the string will be copied into buffer in its raw form,
+   //without conversion, and he code table of the string is returned in this variable
+   //if it is NULL.
+   char *getText(char *buffer, int size, const char **fromCode = NULL);
    //The same semantics as for getText(char*) apply.
    //The short version of the text according to ETSI TR 101 211 (chapter 4.6)
    //will be written into the shortVersion buffer (which should, therefore, have the same
@@ -518,13 +521,15 @@ public:
    char *getText(char *buffer, char *shortVersion, int sizeBuffer, int sizeShortVersion);
 protected:
    virtual void Parse() {}
-   void decodeText(char *buffer, int size);
+   void decodeText(char *buffer, int size, const char **fromCode = NULL);
    void decodeText(char *buffer, char *shortVersion, int sizeBuffer, int sizeShortVersion);
 };
 
 // Set the character table to use for strings that do not begin with a character
 // table indicator. Call with NULL to turn this off.
-void SetOverrideCharacterTable(const char *CharacterTable);
+// Must be called *after* SetSystemCharacterTable()!
+// Returns true if the character table was recognized.
+bool SetOverrideCharacterTable(const char *CharacterTable);
 // Call this function to set the system character table. CharacterTable is a string
 // like "iso8859-15" or "utf-8" (case insensitive).
 // Returns true if the character table was recognized.
@@ -533,8 +538,11 @@ bool SetSystemCharacterTable(const char *CharacterTable);
 // a string indicating that table. If no table can be determined, the
 // default ISO6937 is returned. If a table can be determined, the buffer
 // and length are adjusted accordingly.
+// The isSingleByte parameter is deprecated and only present for backwards compatibility.
 const char *getCharacterTable(const unsigned char *&buffer, int &length, bool *isSingleByte = NULL);
-bool convertCharacterTable(const char *from, size_t fromLength, char *to, size_t toLength, const char *fromCode);
+// Copies 'from' to 'to' and converts characters according to 'fromCode', if given.
+// Returns the length of the resulting string.
+size_t convertCharacterTable(const char *from, size_t fromLength, char *to, size_t toLength, const char *fromCode);
 bool systemCharacterTableIsSingleByte(void);
 
 } //end of namespace

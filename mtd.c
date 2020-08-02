@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: mtd.c 1.12.1.2 2019/05/28 15:55:44 kls Exp $
+ * $Id: mtd.c 1.16 2020/06/16 14:33:32 kls Exp $
  */
 
 #include "mtd.h"
@@ -109,6 +109,14 @@ void cMtdHandler::StartDecrypting(void)
          camSlots[i]->TriggerResendPmt();
          camSlots[i]->StartDecrypting();
          }
+      }
+}
+
+void cMtdHandler::StopDecrypting(void)
+{
+  for (int i = 0; i < camSlots.Size(); i++) {
+      if (camSlots[i]->Device())
+         camSlots[i]->StopDecrypting();
       }
 }
 
@@ -292,8 +300,6 @@ void cMtdCamSlot::StartDecrypting(void)
 void cMtdCamSlot::StopDecrypting(void)
 {
   cCamSlot::StopDecrypting();
-  if (!MasterSlot()->IsDecrypting())
-     MasterSlot()->StopDecrypting();
   cMutexLock MutexLock(&clearMutex);
   mtdMapper->Clear();
   mtdBuffer->Clear();
@@ -335,6 +341,11 @@ uchar *cMtdCamSlot::Decrypt(uchar *Data, int &Count)
         d = NULL;
      }
   return d;
+}
+
+bool cMtdCamSlot::TsPostProcess(uchar *Data)
+{
+  return MasterSlot()->TsPostProcess(Data);
 }
 
 void cMtdCamSlot::InjectEit(int Sid)

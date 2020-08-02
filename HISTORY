@@ -5957,7 +5957,7 @@ Video Disk Recorder Revision History
 - Fixed cDevice::PlayTsAudio() and made cDevice::PlayTsVideo() return 0 if
   PlayVideo() didn't play anything.
 - Added an 'int' typecast to calculations involving FramesPerSecond() to avoid
-  compiler warnings (reported by Winfried Koehler).
+  compiler warnings (reported by Winfried Köhler).
 - Fixed detecting frames for pure audio recordings.
 - Fixed editing PES recordings. The frame type in the index.vdr file generated for
   the edited PES recording is set to 1 for I-frames and 2 for all others (P- and
@@ -9419,3 +9419,96 @@ Video Disk Recorder Revision History
   the call is now automatically forwarded to QueueMessage().
 - Fixed handling the S2SatelliteDeliverySystemDescriptor for transponders broadcasting
   in "backwards compatibility mode" according to ETSI EN 300 468 (thanks to Onur Sentürk).
+
+2020-05-18: Version 2.4.2
+
+- Fixed moving channels between number groups in SVDRP's MOVC command and the Channels
+  menu, in case a channel is moved to a higher number and into a numbered group
+  (reported by Manuel Reimer).
+- Now retuning if the received transponder's SDT doesn't contain the expected values
+  for NID and TID (thanks to Uwe Scheffler for reporting a problem with failed tuning
+  in SCR systems, and Helmut Binder for helping with the implementation).
+- Fixed compatibility with current versions of glibc (thanks to Manuel Reimer).
+- The SVDRP command DELC now also accepts a channel id (suggested by Manuel Reimer).
+- Fixed dropping capabilities in case cap_sys_time is not available.
+- Added the language code for Bulgarian (thanks to Helmut Binder).
+- Fixed handling multi part ExtendedEventDescriptors where only the first part
+  contains information about the character table (based on a patch from Helmut Binder).
+- When setting the system character table, it is no longer checked against the known
+  entries that are hard coded in libsi/si.c, but rather given to iconv_open() and the
+  result of that call is used to check whether the given name is valid.
+- Checking whether the system character table is "single byte" is now done by checking
+  the result of a sample call to iconv().
+- Setting the override character table now checks and reports whether the given value
+  is valid (suggested by Helmut Binder).
+- The isSingleByte parameter in the call to getCharacterTable() is deprecated and only
+  present for backwards compatibility.
+- Fixed a possible crash in case replay is started and stopped in rapid sequence, by
+  adding missing locking to cControl::Control(). The caller of this function must now
+  provide a cMutexLock which stays alive as long as the result of this call is used.
+  The old version of this function is still there for backwards compatibility with
+  plugins, because this problem appears to occur only under very rare circumstances.
+  Authors of plugins that use this function should switch to the new version, because
+  the old one is deprecated and will be removed in a future version.
+  The version numbers (both VDRVERSNUM and APIVERSNUM) have been bumped to 2.4.2, so
+  that plugins can detect the presence of the new cControl::Control().
+
+2020-06-27: Version 2.4.3
+
+- Added a missing '-D' to the 'plugins' target of the Makefile (thanks to Johann
+  Friedrichs).
+- Fixed the size of cChannel::dtypes[] (thanks to Winfried Köhler).
+  The version numbers (both VDRVERSNUM and APIVERSNUM) have been bumped to 2.4.3 to
+  indicate this change.
+- Added a device hook for detecting whether a device provides EIT data (thanks to
+  Winfried Köhler).
+- Fixed memory handling in cString::Append() (reported by Stefan Herdler).
+- Revised 'Fixed a possible deadlock when detaching a receiver from a device' from
+  version 2.3.9, which sometimes caused a black screen when switching channels
+  (thanks to Stefan Verse).
+- Added failsafe defaults for 'make LCLBLD=1' to the Makefile (thanks to Stefan
+  Herdler).
+- Added codes for more languages and special audio tracks (thanks to Helmut Binder).
+- Added cMtdCamSlot::TsPostProcess() (thanks to Helmut Binder).
+- Added cMtdHandler::StopDecrypting() (thanks to Helmut Binder).
+- Added support for detecting new channels broadcast in HEVC (thanks to Helmut Binder).
+- Added support for detecting 'advanced codec digital radio sound service' (thanks to
+  Helmut Binder).
+- Added handling shared PMT pids and multiple PMT sections (thanks to Helmut Binder).
+- Changed the country code in the generated ParentalRatingDescriptor from 'DEU' to
+  '902' to make it valid for all countries (thanks to Helmut Binder).
+- Added optional verbose output to the libsi Makefile (thanks to Tobias Grimm).
+- Made the call to pkg_config configurable via the PKG_CONFIG macro, which is necessary
+  for cross-building VDR (thanks to Tobias Grimm). Plugin authors may want to modify
+  their Makefiles accordingly by adding the line 'PKG_CONFIG ?= pkg-config' and
+  replacing every occurrence of 'pkg-config' with '$(PKG_CONFIG)', as can be seen in
+  the Makefiles of the plugins that come with the VDR source.
+- Fixed a typo in svdrp.c (thanks to Tobias Grimm).
+- Added support for HEVC-video and AC-4-audio (thanks to Christoph Haubrich).
+- Added a comment about the semantics of cTimeMs::Set().
+- Adjusted device selection in GetDeviceForTransponder() to that in GetDevice() (thanks
+  to Helmut Binder).
+- Now adding CPPFLAGS to CXXFLAGS to allow extra preprocessor flags to be given when
+  doing make (suggested by Tobisa Grimm).
+- Added CRC check of the CAT in cCaPidReceiver::Receive() (thanks to Helmut Binder).
+- Fixed the 'else if' branch in cDevice::GetDeviceForTransponder(), which hasn't
+  been active since version 1.7.29 (reported by Helmut Binder). The original purpose of
+  this branch was to use a device that is currently not recording for switching to the
+  transponder of an upcoming VPS timer. However, this caused problems with more than
+  two bonded devices, which was "fixed" in version 1.7.29. Apparently this fix merely
+  rendered the whole code branch inactive. Now this branch is only executed for devices
+  that are not bonded.
+
+2020-08-02: Version 2.4.4
+
+- Improved deleting plugins in case the plugin uses its own memory management (thanks
+  to Winfried Köhler). Plugins that have been compiled with previous versions of VDR
+  do not need to be recompiled, they will silently be handled as before.
+- Now setting currentDisplayChannel = NULL before calling cStatus::MsgOsdClear() in
+  ~cDisplayChannel(), to avoid possible problems in case a plugin calls IsOpen()
+  (reported by Thomas Reufer).
+- Fixed handling inactive shared CA pids (thanks to Helmut Binder).
+- Implemented handling multi packet CATs with MTD (thanks to Helmut Binder).
+- Fixed a possible 'invalid lock sequence' when switching to an unavailable channel
+  with the main menu open.
+- Official release.

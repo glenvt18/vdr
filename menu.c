@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: menu.c 4.74.1.6 2019/05/28 15:55:44 kls Exp $
+ * $Id: menu.c 4.83 2020/07/01 15:05:17 kls Exp $
  */
 
 #include "menu.h"
@@ -516,7 +516,6 @@ eOSState cMenuChannels::Delete(void)
         Channels->Del(Channel);
         cOsdMenu::Del(Index);
         Propagate(Channels);
-        Channels->SetModifiedByUser();
         isyslog("channel %d deleted", DeletedChannel);
         Deleted = true;
         if (CurrentChannel && CurrentChannel->Number() != CurrentChannelNr) {
@@ -541,10 +540,14 @@ void cMenuChannels::Move(int From, int To)
      if (FromChannel && ToChannel) {
         int FromNumber = FromChannel->Number();
         int ToNumber = ToChannel->Number();
+        if (Channels->MoveNeedsDecrement(FromChannel, ToChannel)) {
+           ToChannel = Channels->Prev(ToChannel); // cListBase::Move() doesn't know about the channel list's numbered groups!
+           To--;
+           }
         Channels->Move(FromChannel, ToChannel);
         cOsdMenu::Move(From, To);
+        SetCurrent(Get(To));
         Propagate(Channels);
-        Channels->SetModifiedByUser();
         isyslog("channel %d moved to %d", FromNumber, ToNumber);
         if (CurrentChannel && CurrentChannel->Number() != CurrentChannelNr) {
            if (!cDevice::PrimaryDevice()->Replaying() || cDevice::PrimaryDevice()->Transferring())
@@ -2728,7 +2731,8 @@ eOSState cMenuRecordingEdit::DeleteMarks(void)
   if (buttonDeleteMarks && Interface->Confirm(tr("Delete editing marks for this recording?"))) {
      if (cMarks::DeleteMarksFile(recording)) {
         SetHelpKeys();
-        if (cControl *Control = cControl::Control(true)) {
+        cMutexLock ControlMutexLock;
+        if (cControl *Control = cControl::Control(ControlMutexLock, true)) {
            if (const cRecording *Recording = Control->GetRecording()) {
               if (strcmp(recording->FileName(), Recording->FileName()) == 0)
                  Control->ClearEditingMarks();
@@ -4454,7 +4458,11 @@ bool cMenuMain::Update(bool Force)
 {
   bool result = false;
 
-  bool NewReplaying = cControl::Control() != NULL;
+  bool NewReplaying = false;
+  {
+    cMutexLock ControlMutexLock;
+    NewReplaying = cControl::Control(ControlMutexLock) != NULL;
+  }
   if (Force || NewReplaying != replaying) {
      replaying = NewReplaying;
      // Replay control:
@@ -4678,8 +4686,8 @@ cDisplayChannel::cDisplayChannel(eKeys FirstKey)
 cDisplayChannel::~cDisplayChannel()
 {
   delete displayChannel;
-  cStatus::MsgOsdClear();
   currentDisplayChannel = NULL;
+  cStatus::MsgOsdClear();
 }
 
 void cDisplayChannel::DisplayChannel(void)

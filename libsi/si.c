@@ -6,7 +6,7 @@
  *   the Free Software Foundation; either version 2 of the License, or     *
  *   (at your option) any later version.                                   *
  *                                                                         *
- *   $Id: si.c 4.0 2015/02/10 13:42:41 kls Exp $
+ *   $Id: si.c 4.2 2020/05/15 11:31:40 kls Exp $
  *                                                                         *
  ***************************************************************************/
 
@@ -230,14 +230,14 @@ char *String::getText() {
    return data;
 }
 
-char *String::getText(char *buffer, int size) {
+char *String::getText(char *buffer, int size, const char **fromCode) {
    int len=getLength();
    if (len < 0 || len >= size) {
       strncpy(buffer, "text error", size);
       buffer[size-1] = 0;
       return buffer;
    }
-   decodeText(buffer, size);
+   decodeText(buffer, size, fromCode);
    return buffer;
 }
 
@@ -311,7 +311,7 @@ static const char *CharacterTables2[] = {
 
 #define NumEntries(Table) (sizeof(Table) / sizeof(char *))
 
-static const char *SystemCharacterTable = NULL;
+static char *SystemCharacterTable = NULL;
 bool SystemCharacterTableIsSingleByte = true;
 
 bool systemCharacterTableIsSingleByte(void)
@@ -321,32 +321,42 @@ bool systemCharacterTableIsSingleByte(void)
 
 static char *OverrideCharacterTable = NULL;
 
-void SetOverrideCharacterTable(const char *CharacterTable)
+bool SetOverrideCharacterTable(const char *CharacterTable)
 {
   free(OverrideCharacterTable);
   OverrideCharacterTable = CharacterTable ? strdup(CharacterTable) : NULL;
+   if (OverrideCharacterTable) {
+      // Check whether the character table is known:
+      iconv_t cd = iconv_open(SystemCharacterTable, OverrideCharacterTable);
+      if (cd != (iconv_t)-1) {
+         iconv_close(cd);
+         return true;
+      }
+   }
+   return false;
 }
 
 bool SetSystemCharacterTable(const char *CharacterTable) {
-   if (CharacterTable) {
-      for (unsigned int i = 0; i < NumEntries(CharacterTables1); i++) {
-         if (CharacterTables1[i] && strcasecmp(CharacterTable, CharacterTables1[i]) == 0) {
-            SystemCharacterTable = CharacterTables1[i];
-            SystemCharacterTableIsSingleByte = i <= SingleByteLimit;
-            return true;
+   free(SystemCharacterTable);
+   SystemCharacterTable = CharacterTable ? strdup(CharacterTable) : NULL;
+   SystemCharacterTableIsSingleByte = true;
+   if (SystemCharacterTable) {
+      // Check whether the character table is known and "single byte":
+      char a[] = "ä";
+      char *pa = a;
+      char b[10];
+      char *pb = b;
+      size_t la = strlen(a);
+      size_t lb = sizeof(b);
+      iconv_t cd = iconv_open(SystemCharacterTable, "ISO-8859-1");
+      if (cd != (iconv_t)-1) {
+         if (iconv(cd, &pa, &la, &pb, &lb) != size_t(-1)) {
+            *pb = 0;
+            SystemCharacterTableIsSingleByte = strlen(b) == 1;
          }
+         iconv_close(cd);
+         return true;
       }
-      for (unsigned int i = 0; i < NumEntries(CharacterTables2); i++) {
-         if (CharacterTables2[i] && strcasecmp(CharacterTable, CharacterTables2[i]) == 0) {
-            SystemCharacterTable = CharacterTables2[i];
-            SystemCharacterTableIsSingleByte = true;
-            return true;
-         }
-      }
-   } else {
-      SystemCharacterTable = NULL;
-      SystemCharacterTableIsSingleByte = true;
-      return true;
    }
    return false;
 }
@@ -386,9 +396,25 @@ const char *getCharacterTable(const unsigned char *&buffer, int &length, bool *i
    return cs;
 }
 
-bool convertCharacterTable(const char *from, size_t fromLength, char *to, size_t toLength, const char *fromCode)
+// A similar version is used in VDR/tools.c:
+static int Utf8CharLen(const char *s)
 {
-  if (SystemCharacterTable) {
+  if (SystemCharacterTableIsSingleByte)
+     return 1;
+#define MT(s, m, v) ((*(s) & (m)) == (v)) // Mask Test
+  if (MT(s, 0xE0, 0xC0) && MT(s + 1, 0xC0, 0x80))
+     return 2;
+  if (MT(s, 0xF0, 0xE0) && MT(s + 1, 0xC0, 0x80) && MT(s + 2, 0xC0, 0x80))
+     return 3;
+  if (MT(s, 0xF8, 0xF0) && MT(s + 1, 0xC0, 0x80) && MT(s + 2, 0xC0, 0x80) && MT(s + 3, 0xC0, 0x80))
+     return 4;
+  return 1;
+}
+
+size_t convertCharacterTable(const char *from, size_t fromLength, char *to, size_t toLength, const char *fromCode)
+{
+  char *result = to;
+  if (SystemCharacterTable && fromCode) {
      iconv_t cd = iconv_open(SystemCharacterTable, fromCode);
      if (cd != (iconv_t)-1) {
         char *fromPtr = (char *)from;
@@ -407,29 +433,44 @@ bool convertCharacterTable(const char *from, size_t fromLength, char *to, size_t
         }
         *to = 0;
         iconv_close(cd);
-        return true;
      }
   }
-  return false;
-}
-
-// A similar version is used in VDR/tools.c:
-static int Utf8CharLen(const char *s)
-{
-  if (SystemCharacterTableIsSingleByte)
-     return 1;
-#define MT(s, m, v) ((*(s) & (m)) == (v)) // Mask Test
-  if (MT(s, 0xE0, 0xC0) && MT(s + 1, 0xC0, 0x80))
-     return 2;
-  if (MT(s, 0xF0, 0xE0) && MT(s + 1, 0xC0, 0x80) && MT(s + 2, 0xC0, 0x80))
-     return 3;
-  if (MT(s, 0xF8, 0xF0) && MT(s + 1, 0xC0, 0x80) && MT(s + 2, 0xC0, 0x80) && MT(s + 3, 0xC0, 0x80))
-     return 4;
-  return 1;
+  else {
+     size_t len = fromLength;
+     if (len >= toLength)
+        len = toLength - 1;
+     strncpy(to, from, len);
+     to[len] = 0;
+  }
+  // Handle control codes:
+  to = result;
+  size_t len = strlen(to);
+  while (len > 0) {
+     int l = Utf8CharLen(to);
+     if (l <= 2) {
+        unsigned char *p = (unsigned char *)to;
+        if (l == 2 && *p == 0xC2) // UTF-8 sequence
+           p++;
+        bool Move = true;
+        switch (*p) {
+          case 0x8A: *to = '\n'; break;
+          case 0xA0: *to = ' ';  break;
+          default:   Move = false;
+        }
+        if (l == 2 && Move) {
+           memmove(p, p + 1, len - 1); // we also copy the terminating 0!
+           len -= 1;
+           l = 1;
+        }
+     }
+     to += l;
+     len -= l;
+  }
+  return strlen(result);
 }
 
 // originally from libdtv, Copyright Rolf Hakenes <hakenes@hippomi.de>
-void String::decodeText(char *buffer, int size) {
+void String::decodeText(char *buffer, int size, const char **fromCode) {
    const unsigned char *from=data.getData(0);
    char *to=buffer;
    int len=getLength();
@@ -437,38 +478,17 @@ void String::decodeText(char *buffer, int size) {
       *to = '\0';
       return;
    }
-   bool singleByte;
-   const char *cs = getCharacterTable(from, len, &singleByte);
-   if (singleByte && SystemCharacterTableIsSingleByte || !convertCharacterTable((const char *)from, len, to, size, cs)) {
+   const char *cs = getCharacterTable(from, len);
+   if (fromCode) {
       if (len >= size)
          len = size - 1;
-      strncpy(to, (const char *)from, len);
-      to[len] = 0;
+      strncpy(buffer, (const char *)from, len);
+      buffer[len] = 0;
+      if (!*fromCode)
+         *fromCode = cs;
    }
    else
-      len = strlen(to); // might have changed
-   // Handle control codes:
-   while (len > 0) {
-      int l = Utf8CharLen(to);
-      if (l <= 2) {
-         unsigned char *p = (unsigned char *)to;
-         if (l == 2 && *p == 0xC2) // UTF-8 sequence
-            p++;
-         bool Move = true;
-         switch (*p) {
-           case 0x8A: *to = '\n'; break;
-           case 0xA0: *to = ' ';  break;
-           default:   Move = false;
-         }
-         if (l == 2 && Move) {
-            memmove(p, p + 1, len - 1); // we also copy the terminating 0!
-            len -= 1;
-            l = 1;
-         }
-      }
-      to += l;
-      len -= l;
-   }
+      convertCharacterTable((const char *)from, len, to, size, cs);
 }
 
 void String::decodeText(char *buffer, char *shortVersion, int sizeBuffer, int sizeShortVersion) {

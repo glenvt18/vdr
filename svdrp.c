@@ -10,7 +10,7 @@
  * and interact with the Video Disk Recorder - or write a full featured
  * graphical interface that sits on top of an SVDRP connection.
  *
- * $Id: svdrp.c 4.37.1.2 2019/05/06 15:20:40 kls Exp $
+ * $Id: svdrp.c 4.43 2020/06/22 20:59:49 kls Exp $
  */
 
 #include "svdrp.h"
@@ -840,8 +840,8 @@ const char *HelpPages[] = {
   "    Used by peer-to-peer connections between VDRs to tell the other VDR\n"
   "    to establish a connection to this VDR. The name is the SVDRP host name\n"
   "    of this VDR, which may differ from its DNS name.",
-  "DELC <number>\n"
-  "    Delete channel.",
+  "DELC <number> | <id>\n"
+  "    Delete the channel with the given number or channel id.",
   "DELR <id>\n"
   "    Delete the recording with the given id. Before a recording can be\n"
   "    deleted, an LSTR command should have been executed in order to retrieve\n"
@@ -970,7 +970,7 @@ const char *HelpPages[] = {
   "    Make the device with the given number the primary device.\n"
   "    Without option it returns the currently active primary device in the same\n"
   "    format as used by the LSTD command.",
-  "PUTE [ file ]\n"
+  "PUTE [ <file> ]\n"
   "    Put data into the EPG list. The data entered has to strictly follow the\n"
   "    format defined in vdr(5) for the 'epg.data' file.  A '.' on a line\n"
   "    by itself terminates the input and starts processing of the data (all\n"
@@ -1379,49 +1379,50 @@ void cSVDRPServer::CmdCONN(const char *Option)
 void cSVDRPServer::CmdDELC(const char *Option)
 {
   if (*Option) {
-     if (isnumber(Option)) {
-        LOCK_TIMERS_READ;
-        LOCK_CHANNELS_WRITE;
-        Channels->SetExplicitModify();
-        if (cChannel *Channel = Channels->GetByNumber(strtol(Option, NULL, 10))) {
-           if (const cTimer *Timer = Timers->UsesChannel(Channel)) {
-              Reply(550, "Channel \"%s\" is in use by timer %s", Option, *Timer->ToDescr());
+     LOCK_TIMERS_READ;
+     LOCK_CHANNELS_WRITE;
+     Channels->SetExplicitModify();
+     cChannel *Channel = NULL;
+     if (isnumber(Option))
+        Channel = Channels->GetByNumber(strtol(Option, NULL, 10));
+     else
+        Channel = Channels->GetByChannelID(tChannelID::FromString(Option));
+     if (Channel) {
+        if (const cTimer *Timer = Timers->UsesChannel(Channel)) {
+           Reply(550, "Channel \"%s\" is in use by timer %s", Option, *Timer->ToDescr());
+           return;
+           }
+        int CurrentChannelNr = cDevice::CurrentChannel();
+        cChannel *CurrentChannel = Channels->GetByNumber(CurrentChannelNr);
+        if (CurrentChannel && Channel == CurrentChannel) {
+           int n = Channels->GetNextNormal(CurrentChannel->Index());
+           if (n < 0)
+              n = Channels->GetPrevNormal(CurrentChannel->Index());
+           if (n < 0) {
+              Reply(501, "Can't delete channel \"%s\" - list would be empty", Option);
               return;
               }
-           int CurrentChannelNr = cDevice::CurrentChannel();
-           cChannel *CurrentChannel = Channels->GetByNumber(CurrentChannelNr);
-           if (CurrentChannel && Channel == CurrentChannel) {
-              int n = Channels->GetNextNormal(CurrentChannel->Index());
-              if (n < 0)
-                 n = Channels->GetPrevNormal(CurrentChannel->Index());
-              if (n < 0) {
-                 Reply(501, "Can't delete channel \"%s\" - list would be empty", Option);
-                 return;
-                 }
-              CurrentChannel = Channels->Get(n);
-              CurrentChannelNr = 0; // triggers channel switch below
-              }
-           Channels->Del(Channel);
-           Channels->ReNumber();
-           Channels->SetModifiedByUser();
-           Channels->SetModified();
-           isyslog("SVDRP %s < %s deleted channel %s", Setup.SVDRPHostName, *clientName, Option);
-           if (CurrentChannel && CurrentChannel->Number() != CurrentChannelNr) {
-              if (!cDevice::PrimaryDevice()->Replaying() || cDevice::PrimaryDevice()->Transferring())
-                 Channels->SwitchTo(CurrentChannel->Number());
-              else
-                 cDevice::SetCurrentChannel(CurrentChannel->Number());
-              }
-           Reply(250, "Channel \"%s\" deleted", Option);
+           CurrentChannel = Channels->Get(n);
+           CurrentChannelNr = 0; // triggers channel switch below
            }
-        else
-           Reply(501, "Channel \"%s\" not defined", Option);
+        Channels->Del(Channel);
+        Channels->ReNumber();
+        Channels->SetModifiedByUser();
+        Channels->SetModified();
+        isyslog("SVDRP %s < %s deleted channel %s", Setup.SVDRPHostName, *clientName, Option);
+        if (CurrentChannel && CurrentChannel->Number() != CurrentChannelNr) {
+           if (!cDevice::PrimaryDevice()->Replaying() || cDevice::PrimaryDevice()->Transferring())
+              Channels->SwitchTo(CurrentChannel->Number());
+           else
+              cDevice::SetCurrentChannel(CurrentChannel->Number());
+           }
+        Reply(250, "Channel \"%s\" deleted", Option);
         }
      else
-        Reply(501, "Error in channel number \"%s\"", Option);
+        Reply(501, "Channel \"%s\" not defined", Option);
      }
   else
-     Reply(501, "Missing channel number");
+     Reply(501, "Missing channel number or id");
 }
 
 static cString RecordingInUseMessage(int Reason, const char *RecordingId, cRecording *Recording)
@@ -2008,7 +2009,7 @@ void cSVDRPServer::CmdMODC(const char *Option)
                  Channels->ReNumber();
                  Channels->SetModifiedByUser();
                  Channels->SetModified();
-                 isyslog("SVDRP %s < %s modifed channel %d %s", Setup.SVDRPHostName, *clientName, Channel->Number(), *Channel->ToText());
+                 isyslog("SVDRP %s < %s modified channel %d %s", Setup.SVDRPHostName, *clientName, Channel->Number(), *Channel->ToText());
                  Reply(250, "%d %s", Channel->Number(), *Channel->ToText());
                  }
               else
@@ -2087,6 +2088,8 @@ void cSVDRPServer::CmdMOVC(const char *Option)
                  int FromNumber = FromChannel->Number();
                  int ToNumber = ToChannel->Number();
                  if (FromNumber != ToNumber) {
+                    if (Channels->MoveNeedsDecrement(FromChannel, ToChannel))
+                       ToChannel = Channels->Prev(ToChannel); // cListBase::Move() doesn't know about the channel list's numbered groups!
                     Channels->Move(FromChannel, ToChannel);
                     Channels->ReNumber();
                     Channels->SetModifiedByUser();

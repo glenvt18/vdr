@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: sdt.c 4.5 2015/08/02 11:33:23 kls Exp $
+ * $Id: sdt.c 4.8 2020/06/16 14:50:07 kls Exp $
  */
 
 #include "sdt.h"
@@ -23,8 +23,13 @@ static bool DebugSdt = false;
 cSdtFilter::cSdtFilter(cPatFilter *PatFilter)
 {
   source = cSource::stNone;
+  lastSource = cSource::stNone;
+  lastTransponder = 0;
+  lastNid = 0;
+  lastTid = 0;
   patFilter = PatFilter;
-  Set(0x11, 0x42);  // SDT
+  transponderState = tsUnknown;
+  Set(0x11, 0x42);  // SDT actual TS
 }
 
 void cSdtFilter::SetStatus(bool On)
@@ -34,6 +39,7 @@ void cSdtFilter::SetStatus(bool On)
   sectionSyncer.Reset();
   if (!On)
      source = cSource::stNone;
+  transponderState = tsUnknown;
 }
 
 void cSdtFilter::Trigger(int Source)
@@ -45,10 +51,36 @@ void cSdtFilter::Trigger(int Source)
 void cSdtFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length)
 {
   cMutexLock MutexLock(&mutex);
-  if (!(source && Transponder()))
-     return;
   SI::SDT sdt(Data, false);
   if (!sdt.CheckCRCAndParse())
+     return;
+  if (transponderState == tsUnknown) {
+     // The transponder can be verified with any section, no sync required:
+     int Nid = sdt.getOriginalNetworkId();
+     int Tid = sdt.getTransportStreamId();
+     if (Source() != lastSource || !ISTRANSPONDER(Transponder(), lastTransponder)) {
+        // We expect a change in NID/TID:
+        if (Nid && Tid && Nid == lastNid && Tid == lastTid) {
+           transponderState = tsWrong;
+           dsyslog("SDT: channel %d NID/TID (%d/%d) not found, got %d/%d", Channel()->Number(), Channel()->Nid(), Channel()->Tid(), Nid, Tid);
+           return;
+           }
+        }
+     // NID/TID is acceptable:
+     lastSource = Source();
+     lastTransponder = Transponder();
+     lastNid = Nid;
+     lastTid = Tid;
+     if (Nid == Channel()->Nid() && Tid == Channel()->Tid()) {
+        // NID/TID correspond with the channel data:
+        transponderState = tsVerified;
+        }
+     else {
+        // NID/TID differ from the channel data, but we accept it, since this *is* the data for this transponder:
+        transponderState = tsAccepted;
+        }
+     }
+  if (!(source && Transponder()))
      return;
   if (!sectionSyncer.Sync(sdt.getVersionNumber(), sdt.getSectionNumber(), sdt.getLastSectionNumber()))
      return;
@@ -79,8 +111,11 @@ void cSdtFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
                    case 0x02: // digital radio sound service
                    case 0x04: // NVOD reference service
                    case 0x05: // NVOD time-shifted service
+                   case 0x0A: // advanced codec digital radio sound service
                    case 0x16: // digital SD television service
                    case 0x19: // digital HD television service
+                   case 0x1F: // HEVC digital television service
+                   case 0x20: // HEVC UHD digital television service
                         {
                         char NameBuf[Utf8BufSize(1024)];
                         char ShortNameBuf[Utf8BufSize(1024)];

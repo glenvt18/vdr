@@ -275,7 +275,7 @@ Aaron Holtzman
 Wolfgang Henselmann-Weiss <Wolfgang_Henselmann@betaresearch.de>
  for fixing calculating the timeout value in cFile::FileReady()
 
-Uwe Scheffler <linux_dvb@uni.de>
+Uwe Scheffler <scheffler.u@web.de>
  for his help in keeping 'channels.conf.cable' and 'channels.conf.terr' up to date
  for helping to test new DVB-T handling
  for reporting a bug in switching the video format in the Setup/DVB menu
@@ -285,6 +285,7 @@ Uwe Scheffler <linux_dvb@uni.de>
  for reporting a black screen while a "Recording started" message is displayed
  for reporting a problem with the lock on the Channels list in cDisplayChannel still
  being held when Flush() was called
+ for reporting a problem with failed tuning in SCR systems
 
 Matjaz Thaler <matjaz.thaler@guest.arnes.si>
  for improving AC3 decoding when replaying DVDs
@@ -2270,9 +2271,6 @@ Javier Fernández-Sanguino Peña <jfs@computer.org>
 Jürgen Schneider <ivory7@gmx.de>
  for a patch that was used as a base to fix handling multi byte key sequences
  in cKbdRemote
- for reporting a possible discrepancy of the primary device number in the LSTD and
- PRIM commands
- for adding support for EAC3 audio from other sources
 
 Christian Wieninger <cwieninger@gmx.de>
  for suggesting to add cMenuEditStrItem::InEditMode()
@@ -2442,6 +2440,7 @@ Christoph Haubrich <christoph1.haubrich@arcor.de>
  "Edit recording" menu
  for suggesting to add a confirmation before renaming a recording to its folder name
  for reporting a problem with data loss in case renaming a recording fails
+ for adding support for HEVC-video and AC-4-audio
 
 Pekka Mauno <pekka.mauno@iki.fi>
  for fixing cSchedule::GetFollowingEvent() in case there is currently no present
@@ -2494,6 +2493,11 @@ Tobias Grimm <tobias.grimm@e-tobi.net>
  for adding a manual page for 'svdrpsend'
  for adding a missing dependency to the Makefile to avoid error messages in the
  clean-plugins target
+ for adding optional verbose output to the libsi Makefile
+ for making the call to pkg_config configurable via the PKG_CONFIG macro
+ for fixing a typo in svdrp.c
+ for suggesting to add CPPFLAGS to CXXFLAGS to allow extra preprocessor flags to be
+ given when doing make
 
 Helge Lenz <h.lenz@gmx.de>
  for reporting a bug in setting the 'Delta' parameter when calling the shutdown
@@ -2746,10 +2750,18 @@ Benjamin Hess <benjamin.h@gmx.ch>
  for enhancing the SVDRP command CLRE to allow clearing the EPG data of a particular
  channel
 
-Winfried Koehler <w_koehl@gmx.de>
+Winfried Köhler <w_koehl@gmx.de>
  for fixing finding new transponders
+ for fixing wrong value for TableIdBAT in libsi/si.h
  for reporting a compiler warning in calculations involving FramesPerSecond()
+ for making several code modifications to avoid compiler warnings
+ for improving the description of the transponder parameters in vdr.5
+ for reporting a necessary fix in the description of cReceiver in PLUGINS.html,
+ regarding detaching a receiver from its device before deleting it
  for fixing some copy&paste errors in PLUGINS.html
+ for fixing the size of cChannel::dtypes[]
+ for adding a device hook for detecting whether a device provides EIT data
+ for improving deleting plugins in case the plugin uses its own memory management
 
 Hans-Werner Hilse <hilse@web.de>
  for adding the command line option --userdump to enable core dumps in case VDR
@@ -2816,13 +2828,6 @@ Michael Nork <mnork0@gmx.net>
  binary distributions to have full control over whether or not to use the --vfat
  option at runtime
 
-Winfried Köhler <w_koehl@gmx.de>
- for fixing wrong value for TableIdBAT in libsi/si.h
- for making several code modifications to avoid compiler warnings
- for improving the description of the transponder parameters in vdr.5
- for reporting a necessary fix in the description of cReceiver in PLUGINS.html,
- regarding detaching a receiver from its device before deleting it
-
 Igor M. Liplianin <liplianin@tut.by>
  for a patch that was used to convert VDR to the S2API driver API
 
@@ -2858,6 +2863,7 @@ Johann Friedrichs <johann.friedrichs@web.de>
  for reporting a problem in processing SVDRP client responses in case the caller doesn't
  want the actual response strings
  for reporting a bug in handling the tfRecording flag in the SVDRP commands MODT and UPDT
+ for adding a missing '-D' to the 'plugins' target of the Makefile
 
 Timo Helkio <timolavi@mbnet.fi>
  for reporting a hangup when replaying a TS recording with subtitles activated
@@ -2918,6 +2924,9 @@ Manuel Reimer <Manuel.Reimer@gmx.de>
  order to avoid discontinuities
  for setting the environment variables HOME, USER, LOGNAME and SHELL accordingly
  when switching to a less privileged user id
+ for reporting a bug in moving channels between number groups in SVDRP's MOVC command
+ for fixing compatibility with current versions of glibc
+ for suggesting to make the SVDRP command DELC accept a channel id
 
 Rene van den Braken <rene@vandenbraken.name>
  for reporting a bug in writing the PCR pid into the PMT in
@@ -3417,6 +3426,7 @@ Thomas Reufer <thomas@reufer.ch>
  for fixing regenerating the index of audio recordings
  for implementing the SVDRP commands 'LSTD' and 'PRIM'
  for adding some comments regarding font height
+ for reporting a possible problem with plugins calling IsOpen() in ~cDisplayChannel()
 
 Eike Sauer <EikeSauer@t-online.de>
  for reporting a problem with channels that need more than 5 TS packets for detecting
@@ -3508,6 +3518,8 @@ Stefan Herdler <herdler@gmx.de>
  too early
  for reporting a bug in using the default sort mode in a video directory without a
  ".sort" file
+ for reporting faulty memory handling in cString::Append()
+ for adding failsafe defaults for 'make LCLBLD=1' to the Makefile
 
 Tobias Faust <tobias.faust@gmx.de>
  for the original "jumpingseconds" patch
@@ -3585,6 +3597,27 @@ Helmut Binder <cco@aon.at>
  for fixing updating the checksum in the CA table after mapping EMM PIDs for MTD
  for fixing a compiler warning in ExchangeChars()
  for suggesting to add __attribute__((packed)) to tIndexPes and tIndexTs
+ for helping with the implementation of retuning if the received transponder's SDT
+ doesn't contain the expected values for NID and TID
+ for adding the language code for Bulgarian
+ for a patch that was used as a base for fixing handling multi part ExtendedEventDescriptors
+ where only the first part contains information about the character table
+ for suggesting to check and report whether the given value is valid when setting the
+ override character table
+ for adding codes for more languages and special audio tracks
+ for adding cMtdCamSlot::TsPostProcess()
+ for adding cMtdHandler::StopDecrypting()
+ for adding support for detecting new channels broadcast in HEVC
+ for adding support for detecting 'advanced codec digital radio sound service'
+ for adding handling shared PMT pids and multiple PMT sections
+ for changing the country code in the generated ParentalRatingDescriptor from 'DEU' to
+ '902' to make it valid for all countries
+ for adjusting device selection in GetDeviceForTransponder() to that in GetDevice()
+ for adding CRC check of the CAT in cCaPidReceiver::Receive()
+ for reporting that the 'else if' branch in cDevice::GetDeviceForTransponder() hasn't
+ been active since version 1.7.29
+ for fixing handling inactive shared CA pids
+ for implementing handling multi packet CATs with MTD
 
 Ulrich Eckhardt <uli@uli-eckhardt.de>
  for reporting a problem with shutdown after user inactivity in case a plugin is
@@ -3592,3 +3625,11 @@ Ulrich Eckhardt <uli@uli-eckhardt.de>
 
 Stian B. Barmen <stian@barmen.nu>
  for reporting missing EPG data on channels from Canal Digital Norway
+
+Jürgen Schneider <jsffm@web.de>
+ for reporting a possible discrepancy of the primary device number in the LSTD and
+ PRIM commands
+ for adding support for EAC3 audio from other sources
+
+Stefan Verse <Verse@amotronics.de>
+ for fixing an occasional black screen when switching channels

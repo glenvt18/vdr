@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: dvbdevice.c 4.16.1.4 2019/05/28 15:55:44 kls Exp $
+ * $Id: dvbdevice.c 4.23 2020/06/10 14:52:43 kls Exp $
  */
 
 #include "dvbdevice.h"
@@ -1701,6 +1701,7 @@ void cDvbTuner::Action(void)
                      }
                   }
                tunerStatus = tsTuned;
+               device->SectionHandler()->SetStatus(true); // may have been turned off when retuning
                Timer.Set(tuneTimeout + (scr ? rand() % SCR_RANDOM_TIMEOUT : 0));
                if (positioner)
                   continue;
@@ -1732,6 +1733,14 @@ void cDvbTuner::Action(void)
                   if (LostLock) {
                      isyslog("frontend %d/%d regained lock on channel %d (%s), tp %d", adapter, frontend, channel.Number(), channel.Name(), channel.Transponder());
                      LostLock = false;
+                     }
+                  if (device->SdtFilter()->TransponderWrong()) {
+                     isyslog("frontend %d/%d is not receiving transponder %d for channel %d (%s) - retuning", adapter, frontend, channel.Transponder(), channel.Number(), channel.Name());
+                     device->SectionHandler()->SetStatus(false);
+                     tunerStatus = tsSet;
+                     lastDiseqc = NULL;
+                     lastSource = 0;
+                     continue;
                      }
                   tunerStatus = tsLocked;
                   locked.Broadcast();
@@ -2235,7 +2244,7 @@ bool cDvbDevice::ProvidesChannel(const cChannel *Channel, int Priority, bool *Ne
 
 bool cDvbDevice::ProvidesEIT(void) const
 {
-  return dvbTuner != NULL;
+  return dvbTuner != NULL && DeviceHooksProvidesEIT();
 }
 
 int cDvbDevice::NumProvidedSystems(void) const

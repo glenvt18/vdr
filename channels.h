@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: channels.h 4.3 2017/06/10 15:06:40 kls Exp $
+ * $Id: channels.h 4.5 2020/06/10 14:00:36 kls Exp $
  */
 
 #ifndef __CHANNELS_H
@@ -105,7 +105,7 @@ private:
   int atypes[MAXAPIDS + 1]; // list is zero-terminated
   char alangs[MAXAPIDS][MAXLANGCODE2];
   int dpids[MAXDPIDS + 1]; // list is zero-terminated
-  int dtypes[MAXAPIDS + 1]; // list is zero-terminated
+  int dtypes[MAXDPIDS + 1]; // list is zero-terminated
   char dlangs[MAXDPIDS][MAXLANGCODE2];
   int spids[MAXSPIDS + 1]; // list is zero-terminated
   char slangs[MAXSPIDS][MAXLANGCODE2];
@@ -230,6 +230,7 @@ public:
   int GetNextNormal(int Idx) const;  ///< Get next normal channel (not group)
   int GetPrevNormal(int Idx) const;  ///< Get previous normal channel (not group)
   void ReNumber(void);               ///< Recalculate 'number' based on channel type
+  bool MoveNeedsDecrement(cChannel *From, cChannel *To); // Detect special case when moving a channel (closely related to Renumber())
   void Del(cChannel *Channel);       ///< Delete the given Channel from the list
   const cChannel *GetByNumber(int Number, int SkipGap = 0) const;
   cChannel *GetByNumber(int Number, int SkipGap = 0) { return const_cast<cChannel *>(static_cast<const cChannels *>(this)->GetByNumber(Number, SkipGap)); }

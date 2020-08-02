@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: device.h 4.12.1.1 2019/05/28 15:55:44 kls Exp $
+ * $Id: device.h 4.17 2020/06/27 10:24:46 kls Exp $
  */
 
 #ifndef __DEVICE_H
@@ -95,6 +95,8 @@ public:
           ///< program ends.
   virtual bool DeviceProvidesTransponder(const cDevice *Device, const cChannel *Channel) const;
           ///< Returns true if the given Device can provide the given Channel's transponder.
+  virtual bool DeviceProvidesEIT(const cDevice *Device) const;
+          ///< Returns true if the given Device can provide EIT data.
   };
 
 /// The cDevice class is the base from which actual devices can be derived.
@@ -209,6 +211,11 @@ protected:
          ///< device (On = false), it should do so in this function.
          ///< A derived class must call the MakePrimaryDevice() function of its
          ///< base class.
+  virtual bool IsBonded(void) const { return false; }
+         ///< Returns true if this device is bonded to an other device.
+         ///< Only implemented by cDvbDevice and used in GetDeviceForTransponder().
+         ///< May be dropped in a future version, if a better solution is found.
+         ///< Do not use otherwise!
 public:
   bool IsPrimaryDevice(void) const { return this == primaryDevice && HasDecoder(); }
   int CardIndex(void) const { return cardIndex; }
@@ -236,6 +243,7 @@ private:
   static cList<cDeviceHook> deviceHooks;
 protected:
   bool DeviceHooksProvidesTransponder(const cChannel *Channel) const;
+  bool DeviceHooksProvidesEIT(void) const;
 
 // SPU facilities
 
@@ -332,7 +340,7 @@ public:
          ///< Returns true if it is ok to switch to the Channel's transponder on this
          ///< device, without disturbing any other activities. If an occupied timeout
          ///< has been set for this device, and that timeout has not yet expired,
-         ///< this function returns false,
+         ///< this function returns false.
   bool SwitchChannel(const cChannel *Channel, bool LiveView);
          ///< Switches the device to the given Channel, initiating transfer mode
          ///< if necessary.
@@ -450,6 +458,8 @@ public:
        ///< Attaches the given filter to this device.
   void Detach(cFilter *Filter);
        ///< Detaches the given filter from this device.
+  const cSdtFilter *SdtFilter(void) const { return sdtFilter; }
+  cSectionHandler *SectionHandler(void) const { return sectionHandler; }
 
 // Common Interface facilities:
 
