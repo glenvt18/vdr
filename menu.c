@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: menu.c 4.83 2020/07/01 15:05:17 kls Exp $
+ * $Id: menu.c 4.88 2020/12/12 22:01:01 kls Exp $
  */
 
 #include "menu.h"
@@ -1130,7 +1130,7 @@ eOSState cMenuEditTimer::ProcessKey(eKeys Key)
                            addedTimer = timer;
                            if (!HandleRemoteModifications(timer)) {
                               // must add the timer before HandleRemoteModifications to get proper log messages with timer ids
-                              Timers->Del(timer);
+                              Timers->Del(timer, false);
                               addedTimer = NULL;
                               return osContinue;
                               }
@@ -1326,8 +1326,10 @@ eOSState cMenuTimers::OnOff(void)
         if (!ExecSVDRPCommand(Timer->Remote(), cString::sprintf("MODT %d %s", Timer->Id(), *Timer->ToText(true)), &Response) || SVDRPCode(Response[0]) != 250)
            RemoteTimerError(Timer);
         }
-     LOCK_SCHEDULES_READ;
-     Timer->SetEventFromSchedule(Schedules);
+     {
+       LOCK_SCHEDULES_READ;
+       Timer->SetEventFromSchedule(Schedules);
+     }
      RefreshCurrent();
      DisplayCurrent(true);
      if (Timer->FirstDay())
@@ -2832,6 +2834,8 @@ cMenuRecording::cMenuRecording(const cRecording *Recording, bool WithButtons)
 :cOsdMenu(tr("Recording info"))
 {
   SetMenuCategory(mcRecordingInfo);
+  if (cRecordings::GetRecordingsRead(recordingsStateKey)) // initializes recordingsStateKey, so we don't call Display() unnecessarily
+     recordingsStateKey.Remove();
   recording = Recording;
   originalFileName = recording->FileName();
   withButtons = WithButtons;
@@ -4727,7 +4731,7 @@ const cChannel *cDisplayChannel::NextAvailableChannel(const cChannel *Channel, i
 {
   if (Direction) {
      cControl::Shutdown(); // prevents old channel from being shown too long if GetDevice() takes longer
-                           // and, if decrypted, this removes the now superflous PIDs from the CAM, too
+                           // and, if decrypted, this removes the now superfluous PIDs from the CAM, too
      LOCK_CHANNELS_READ;
      while (Channel) {
            Channel = Direction > 0 ? Channels->Next(Channel) : Channels->Prev(Channel);
@@ -5225,6 +5229,11 @@ cRecordControl::cRecordControl(cDevice *Device, cTimers *Timers, cTimer *Timer, 
   const char *LastReplayed = cReplayControl::LastReplayed(); // must do this before locking schedules!
   // Whatever happens here, the timers will be modified in some way...
   Timers->SetModified();
+  cStateKey ChannelsStateKey;
+  // To create a new timer, we need to make shure there is
+  // a lock on Channels prior to the Schedules locking below
+  if (!Timer)
+     cChannels::GetChannelsRead(ChannelsStateKey);
   // We're going to work with an event here, so we need to prevent
   // others from modifying any EPG data:
   cStateKey SchedulesStateKey;
@@ -5240,6 +5249,7 @@ cRecordControl::cRecordControl(cDevice *Device, cTimers *Timers, cTimer *Timer, 
      timer = new cTimer(true, Pause);
      Timers->Add(timer);
      instantId = cString::sprintf(cDevice::NumDevices() > 1 ? "%s - %d" : "%s", timer->Channel()->Name(), device->DeviceNumber() + 1);
+     ChannelsStateKey.Remove();
      }
   timer->SetPending(true);
   timer->SetRecording(true);
@@ -5376,7 +5386,8 @@ bool cRecordControls::Start(cTimers *Timers, cTimer *Timer, bool Pause)
   LastNoDiskSpaceMessage = 0;
 
   ChangeState();
-  LOCK_CHANNELS_READ;
+  cStateKey StateKey;
+  const cChannels *Channels = cChannels::GetChannelsRead(StateKey);
   int ch = Timer ? Timer->Channel()->Number() : cDevice::CurrentChannel();
   if (const cChannel *Channel = Channels->GetByNumber(ch)) {
      int Priority = Timer ? Timer->Priority() : Pause ? Setup.PausePriority : Setup.DefaultPriority;
@@ -5384,9 +5395,12 @@ bool cRecordControls::Start(cTimers *Timers, cTimer *Timer, bool Pause)
      if (device) {
         dsyslog("switching device %d to channel %d %s (%s)", device->DeviceNumber() + 1, Channel->Number(), *Channel->GetChannelID().ToString(), Channel->Name());
         if (!device->SwitchChannel(Channel, false)) {
+           StateKey.Remove();
            ShutdownHandler.RequestEmergencyExit();
            return false;
            }
+        StateKey.Remove();
+        Channels = NULL;
         if (!Timer || Timer->Matches()) {
            for (int i = 0; i < MAXRECORDCONTROLS; i++) {
                if (!RecordControls[i]) {
@@ -5403,6 +5417,8 @@ bool cRecordControls::Start(cTimers *Timers, cTimer *Timer, bool Pause)
      }
   else
      esyslog("ERROR: channel %d not defined!", ch);
+  if (Channels)
+     StateKey.Remove();
   return false;
 }
 

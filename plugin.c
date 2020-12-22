@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: plugin.c 4.2 2020/06/29 09:29:06 kls Exp $
+ * $Id: plugin.c 4.4 2020/12/16 11:54:06 kls Exp $
  */
 
 #include "plugin.h"
@@ -229,9 +229,16 @@ bool cDll::Load(bool Log)
   if (!error) {
      typedef cPlugin *create_t(void);
      create_t *create = (create_t *)dlsym(handle, "VDRPluginCreator");
-     if (!(error = dlerror()))
+     error = dlerror();
+     if (!error && create) {
         plugin = create();
-     destroy = (destroy_t *)dlsym(handle, "VDRPluginDestroyer");
+        destroy = (destroy_t *)dlsym(handle, "VDRPluginDestroyer");
+        error = dlerror();
+        if (error) {
+           error = NULL;
+           isyslog("plugin %s: missing symbol VDRPluginDestroyer(), please rebuild", fileName);
+           }
+        }
      }
   if (!error) {
      if (plugin && args) {

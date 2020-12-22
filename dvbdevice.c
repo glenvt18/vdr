@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: dvbdevice.c 4.23 2020/06/10 14:52:43 kls Exp $
+ * $Id: dvbdevice.c 4.29 2020/12/05 15:48:40 kls Exp $
  */
 
 #include "dvbdevice.h"
@@ -33,6 +33,8 @@ static int DvbApiVersion = 0x0000; // the version of the DVB driver actually in 
 #define ATSC_LOCK_TIMEOUT  2000 //ms
 
 #define SCR_RANDOM_TIMEOUT  500 // ms (add random value up to this when tuning SCR device to avoid lockups)
+
+#define TSBUFFERSIZE MEGABYTE(16)
 
 // --- DVB Parameter Maps ----------------------------------------------------
 
@@ -365,6 +367,8 @@ cDvbFrontend::cDvbFrontend(int Adapter, int Frontend)
   frontend = Frontend;
   fd_frontend = -1;
   subsystemId = cDvbDeviceProbe::GetSubsystemId(adapter, frontend);
+  memset(&frontendInfo, 0, sizeof(frontendInfo));
+  strn0cpy(frontendInfo.name, "???", sizeof(frontendInfo.name));
   numModulations = 0;
   Open();
   QueryDeliverySystems();
@@ -790,7 +794,7 @@ bool cDvbTuner::IsTunedTo(const cChannel *Channel) const
 {
   if (tunerStatus == tsIdle)
      return false; // not tuned to
-  if (channel.Source() != Channel->Source() || channel.Transponder() != Channel->Transponder())
+  if (channel.Source() != Channel->Source() || channel.Transponder() != Channel->Transponder() || channel.Srate() != Channel->Srate())
      return false; // sufficient mismatch
   // Polarization is already checked as part of the Transponder.
   return strcmp(channel.Parameters(), Channel->Parameters()) == 0;
@@ -854,6 +858,7 @@ void cDvbTuner::ClearEventQueue(void) const
 bool cDvbTuner::GetFrontendStatus(fe_status_t &Status) const
 {
   ClearEventQueue();
+  Status = (fe_status_t)0; // initialize here to fix buggy drivers
   while (1) {
         if (ioctl(fd_frontend, FE_READ_STATUS, &Status) != -1)
            return true;
@@ -870,7 +875,7 @@ bool cDvbTuner::GetFrontendStatus(fe_status_t &Status) const
 bool cDvbTuner::GetSignalStats(int &Valid, double *Strength, double *Cnr, double *BerPre, double *BerPost, double *Per, int *Status) const
 {
   ClearEventQueue();
-  fe_status_t FeStatus;
+  fe_status_t FeStatus = (fe_status_t)0; // initialize here to fix buggy drivers
   dtv_property Props[MAXFRONTENDCMDS];
   dtv_properties CmdSeq;
   memset(&Props, 0, sizeof(Props));
@@ -898,7 +903,7 @@ bool cDvbTuner::GetSignalStats(int &Valid, double *Strength, double *Cnr, double
                   SETCMD(DTV_STAT_POST_TOTAL_BIT_COUNT, 0); }
   if (Per)      { SETCMD(DTV_STAT_ERROR_BLOCK_COUNT, 0);
                   SETCMD(DTV_STAT_TOTAL_BLOCK_COUNT, 0); }
-  if (ioctl(fd_frontend, FE_GET_PROPERTY, &CmdSeq) != 0) {
+  if (CmdSeq.num && ioctl(fd_frontend, FE_GET_PROPERTY, &CmdSeq) != 0) {
      esyslog("ERROR: frontend %d/%d: %m (%s:%d)", adapter, frontend, __FILE__, __LINE__);
      return false;
      }
@@ -2135,11 +2140,17 @@ bool cDvbDevice::SetPid(cPidHandle *Handle, int Type, bool On)
   return true;
 }
 
+#define RB_NUM_SECTIONS 8 // default: 2 sections = 8192 bytes
+
 int cDvbDevice::OpenFilter(u_short Pid, u_char Tid, u_char Mask)
 {
   cString FileName = DvbName(DEV_DVB_DEMUX, adapter, frontend);
   int f = open(FileName, O_RDWR | O_NONBLOCK);
   if (f >= 0) {
+     if (Pid == EITPID) { // increase ringbuffer size for EIT
+        if (ioctl(f, DMX_SET_BUFFER_SIZE, MAX_SECTION_SIZE * RB_NUM_SECTIONS) < 0)
+           dsyslog("OpenFilter (pid=%d, tid=%02X): ioctl DMX_SET_BUFFER_SIZE failed", Pid, Tid);
+        }
      dmx_sct_filter_params sctFilterParams;
      memset(&sctFilterParams, 0, sizeof(sctFilterParams));
      sctFilterParams.pid = Pid;
@@ -2311,7 +2322,7 @@ bool cDvbDevice::OpenDvr(void)
   CloseDvr();
   fd_dvr = DvbOpen(DEV_DVB_DVR, adapter, frontend, O_RDONLY | O_NONBLOCK, true);
   if (fd_dvr >= 0)
-     tsBuffer = new cTSBuffer(fd_dvr, MEGABYTE(5), DeviceNumber() + 1);
+     tsBuffer = new cTSBuffer(fd_dvr, TSBUFFERSIZE, DeviceNumber() + 1);
   return fd_dvr >= 0;
 }
 

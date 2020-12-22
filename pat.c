@@ -4,7 +4,7 @@
  * See the main source file 'vdr.c' for copyright information and
  * how to reach the author.
  *
- * $Id: pat.c 4.6 2020/06/19 12:19:15 kls Exp $
+ * $Id: pat.c 4.9 2020/12/18 14:51:57 kls Exp $
  */
 
 #include "pat.h"
@@ -334,7 +334,7 @@ cPmtSidEntry::cPmtSidEntry(int Sid, int Pid, cPmtPidEntry *PidEntry)
 #ifdef DEBUG_PAT_PMT
 #define DBGLOG(a...) { cString s = cString::sprintf(a); fprintf(stderr, "%s\n", *s); dsyslog("%s", *s); }
 #else
-#define DBGLOG(a...)
+#define DBGLOG(a...) void()
 #endif
 
 cPatFilter::cPatFilter(void)
@@ -389,13 +389,13 @@ bool cPatFilter::PmtVersionChanged(int PmtPid, int Sid, int Version, bool SetNew
       if (se->Sid() == Sid && se->Pid() == PmtPid) {
          if (!se->Received()) {
             se->SetReceived(true);
-            if (PmtPidComplete(PmtPid))
-               se->PidEntry()->SetComplete(true);
+            se->PidEntry()->SetComplete(PmtPidComplete(PmtPid));
             }
          if (se->Version() != Version) {
-            DBGLOG("PMT %d  %2d %5d/%d %2d -> %2d", Transponder(), i, PmtPid, Sid, se->Version(), Version);
             if (SetNewVersion)
                se->SetVersion(Version);
+            else
+               DBGLOG("PMT %d  %2d %5d/%d %2d -> %2d", Transponder(), i, PmtPid, Sid, se->Version(), Version);
             return true;
             }
          break;
@@ -411,6 +411,7 @@ void cPatFilter::SwitchToNextPmtPid(void)
      if (!(activePmt = pmtPidList.Next(activePmt)))
         activePmt = pmtPidList.First();
      PmtPidReset(activePmt->Pid());
+     activePmt->SetComplete(false);
      Add(activePmt->Pid(), SI::TableIdPMT);
      }
 }
@@ -473,7 +474,7 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
      SI::PMT pmt(Data, false);
      if (!pmt.CheckCRCAndParse())
         return;
-     if (!PmtVersionChanged(Pid, pmt.getTableIdExtension(), pmt.getVersionNumber(), true)) {
+     if (!PmtVersionChanged(Pid, pmt.getTableIdExtension(), pmt.getVersionNumber(), false)) {
         if (activePmt && activePmt->Complete())
            SwitchToNextPmtPid();
         return;
@@ -482,6 +483,7 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
      cChannels *Channels = cChannels::GetChannelsWrite(StateKey, 10);
      if (!Channels)
         return;
+     PmtVersionChanged(Pid, pmt.getTableIdExtension(), pmt.getVersionNumber(), true);
      bool ChannelsModified = false;
      if (activePmt && activePmt->Complete())
         SwitchToNextPmtPid();

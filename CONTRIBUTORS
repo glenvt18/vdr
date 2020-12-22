@@ -2184,6 +2184,7 @@ Hardy Flor <HFlor@web.de>
 
 Harald Milz <hm@seneca.muc.de>
  for his CUTR patch, which was used as a base to implement the SVDRP command EDIT
+ for reporting a bug in parsing the '-l' command line option
 
 Marko Mäkelä <marko.makela@hut.fi>
  for making repeat keys be ignored when waiting for a keypress to cancel an operation
@@ -2441,6 +2442,9 @@ Christoph Haubrich <christoph1.haubrich@arcor.de>
  for suggesting to add a confirmation before renaming a recording to its folder name
  for reporting a problem with data loss in case renaming a recording fails
  for adding support for HEVC-video and AC-4-audio
+ for implementing anti-aliasing for cPixmap::DrawSlope() and cPixmap::DrawEllipse()
+ for reporting an unnecessary double call to Display() in cMenuRecording::RefreshRecording()
+ for reporting too much memory being allocated in the cImage constructors
 
 Pekka Mauno <pekka.mauno@iki.fi>
  for fixing cSchedule::GetFollowingEvent() in case there is currently no present
@@ -2519,6 +2523,7 @@ Nino Gerbino <ngerb@interfree.it>
 Markus Ehrnsperger <markus.ehrnsperger@googlemail.com>
  for reporting a problem with missing 'INCLUDES += -I$(DVBDIR)/include' in an existing
  Make.config
+ for reporting a bug in error handling when loading a plugin
 
 Werner Färber <w.faerber@gmx.de>
  for reporting a bug in handling the cPluginManager::Active() result when pressing
@@ -2762,6 +2767,12 @@ Winfried Köhler <w_koehl@gmx.de>
  for fixing the size of cChannel::dtypes[]
  for adding a device hook for detecting whether a device provides EIT data
  for improving deleting plugins in case the plugin uses its own memory management
+ for reporting a bug in handling newline characters in ci.c's CopyString()
+ for reporting a bug in checking the return value of the Open() call in
+ cFileName::SetOffset()
+ for adding initialization of cDvbFrontend::frontendInfo
+ for improving handling missing VDRPluginDestroyer()
+ for fixing a compiler warning
 
 Hans-Werner Hilse <hilse@web.de>
  for adding the command line option --userdump to enable core dumps in case VDR
@@ -3480,6 +3491,8 @@ Stefan Schallenberg <infos@nafets.de>
 Claus Muus <email@clausmuus.de>
  for adding the new parameters "Setup/Miscellaneous/Volume steps" and
  ".../Volume linearize"
+ for reporting multiple recording entries in case a recording is started during the
+ initial reading of the video directory
 
 Dieter Ferdinand <dieter.ferdinand@gmx.de>
  for reporting a problem with jumping to an absolute position via the Red key in
@@ -3618,6 +3631,18 @@ Helmut Binder <cco@aon.at>
  been active since version 1.7.29
  for fixing handling inactive shared CA pids
  for implementing handling multi packet CATs with MTD
+ for adding checking the symbol rate to cDvbTuner::IsTunedTo(), which apparently got
+ lost in version 1.7.13
+ for adding a check for an empty command in cDvbTuner::GetSignalStats() to avoid a
+ possible error message
+ for initializing the status variable in cDvbTuner::GetFrontendStatus() and
+ cDvbTuner::GetSignalStats() to avoid problems with drivers that don't do this
+ for fixing "read incomplete section" errors
+ for fixing generating the HashId in cEIT::cEIT()
+ for fixing a bug in handling shared PMTs, where after the first pass not all SIDs of a
+ PMT pid were checked any more
+ for reporting a problem with PMT handling in case locking the Channels list times out
+ for avoiding a lengthy lock on the Channels list when starting a recording
 
 Ulrich Eckhardt <uli@uli-eckhardt.de>
  for reporting a problem with shutdown after user inactivity in case a plugin is
@@ -3633,3 +3658,9 @@ Jürgen Schneider <jsffm@web.de>
 
 Stefan Verse <Verse@amotronics.de>
  for fixing an occasional black screen when switching channels
+
+Jens Schleusener <Jens.Schleusener@fossies.org>
+ for reporting several typos
+
+Bernd Kuhls <bernd.kuhls@t-online.de>
+ for fixing possible compilation errors with libjpeg

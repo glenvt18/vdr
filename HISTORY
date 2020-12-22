@@ -9512,3 +9512,53 @@ Video Disk Recorder Revision History
 - Fixed a possible 'invalid lock sequence' when switching to an unavailable channel
   with the main menu open.
 - Official release.
+
+2020-10-16: Version 2.4.5
+
+- Updated the Italian OSD texts (thanks to Diego Pierotto).
+- Fixed handling newline characters in ci.c's CopyString() (reported by Winfried Köhler).
+- Fixed checking the return value of the Open() call in cFileName::SetOffset() (reported
+  by Winfried Köhler).
+- Fixed a possible invalid lock sequence in cMenuTimers::OnOff().
+- Fixed several typos (reported by Jens Schleusener).
+- Implemented anti-aliasing for cPixmap::DrawSlope() and cPixmap::DrawEllipse() (thanks
+  to Christoph Haubrich).
+  The version numbers (both VDRVERSNUM and APIVERSNUM) have been bumped to 2.4.5 to
+  indicate this change.
+- Fixed alignment of semi-circles in case of odd sizes.
+- Increased the size of the TS buffer to 16MB, to have more reserve when recording
+  several HD programmes.
+- Added checking the symbol rate to cDvbTuner::IsTunedTo(), which apparently got lost
+  in version 1.7.13 (thanks to Helmut Binder).
+- Now checking for an empty command in cDvbTuner::GetSignalStats() to avoid a possible
+  error message (thanks to Helmut Binder).
+- Now initializing the status variable in cDvbTuner::GetFrontendStatus() and
+  cDvbTuner::GetSignalStats() to avoid problems with drivers that don't do this
+  (thanks to Helmut Binder).
+
+2020-12-22: Version 2.4.6
+
+- Fixed multiple recording entries in case a recording is started during the initial
+  reading of the video directory (reported by Claus Muus).
+- Fixed an unnecessary double call to Display() in cMenuRecording::RefreshRecording()
+  (reported by Christoph Haubrich).
+- Fixed a crash in case an error occurs when setting a remote timer.
+- Fixed allocating memory for cImage (reported by Christoph Haubrich).
+- Fixed parsing the '-l' command line option (reported by Harald Milz).
+- Fixed possible compilation errors with libjpeg (thanks to Bernd Kuhls).
+- Fixed "read incomplete section" errors (thanks to Helmut Binder).
+- Fixed generating the HashId in cEIT::cEIT() (thanks to Helmut Binder).
+- Added initialization of cDvbFrontend::frontendInfo (thanks to Winfried Köhler).
+- Fixed a bug in handling shared PMTs, where after the first pass not all SIDs of a
+  PMT pid were checked any more (thanks to Helmut Binder).
+- Fixed PMT handling in case locking the Channels list times out (reported by Helmut
+  Binder).
+- Avoiding a lengthy lock on the Channels list when starting a recording (thanks to
+  Helmut Binder).
+- Fixed error handling when loading a plugin (reported by Markus Ehrnsperger).
+- Improved handling missing VDRPluginDestroyer() (thanks to Winfried Köhler).
+- Fixed initializing tmpbuf in ExtendedEventDescriptors::getText() (thanks to Helmut
+  Binder).
+- Fixed a compiler warning (thanks to Winfried Köhler).
+- Fixed convertCharacterTable() in case iconv_open() fails (thanks to Helmut Binder).
+- Official release.
